@@ -1,0 +1,66 @@
+# Which NEMSIS fields the model fills from the scenario. Everything not listed
+# here is inherited from the template record, which is already schema-valid - so
+# the generator varies clinical content without risking structural validity.
+#
+# Paths are resolved from the schema, not written here: field numbers are unique,
+# so nemsis_gen.generate locates each one in the document tree itself.
+
+singletons:
+  eDispatch.01: dispatch_reason
+  eResponse.05: type_of_service_requested
+  eResponse.07: unit_transport_capability
+  eScene.09: incident_location_type
+  eSituation.07: chief_complaint_anatomic_location
+  eSituation.08: chief_complaint_organ_system
+  eSituation.09: primary_symptom
+  eSituation.11: primary_impression
+  eSituation.13: initial_patient_acuity
+  ePatient.13: gender
+  eDisposition.16: ems_transport_method
+  eDisposition.19: final_patient_acuity
+  eDisposition.21: type_of_destination
+  eDisposition.32: level_of_care_provided
+
+# Same, but the field repeats: the model returns a list of codes.
+repeating_singletons:
+  eSituation.10: other_associated_symptoms
+  eSituation.12: secondary_impressions
+
+# Free-text or numeric leaves taken straight from the clinical intermediate.
+literals:
+  ePatient.15: age
+  eNarrative.01: narrative
+
+# Repeating groups. `intent` names the list in the clinical intermediate; `coded`
+# maps a field to the key holding the plain-language intent for it; `literal`
+# copies a value through unchanged.
+groups:
+  eVitals.VitalGroup:
+    intent: vitals
+    coded:
+      eVitals.26: responsiveness
+    literal:
+      eVitals.06: sbp
+      eVitals.10: heart_rate
+      eVitals.12: spo2
+      eVitals.14: respiratory_rate
+      eVitals.27: pain_score
+
+  eMedications.MedicationGroup:
+    intent: medications
+    coded:
+      eMedications.03: medication
+      eMedications.04: route
+      eMedications.06: dosage_units
+      eMedications.07: response
+    literal:
+      eMedications.05: dosage
+
+  eProcedures.ProcedureGroup:
+    intent: procedures
+    coded:
+      eProcedures.03: procedure
+      eProcedures.06: successful
+      eProcedures.08: response
+    literal:
+      eProcedures.05: attempts

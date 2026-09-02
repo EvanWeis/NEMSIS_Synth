@@ -4,17 +4,22 @@ Guidance for a coding agent working in this repository. See `PROJECT.md` for the
 
 ## Current state
 
-Phase 0 and Phase 1 are done. On disk and working:
+The pipeline runs end to end. On disk and working:
 
-- `reference/xsd/` — all 28 EMS component XSDs, pinned to NEMSIS tag `3.5.0.230317CP4` (`VERSION.txt`).
+- `reference/xsd/` — 28 EMS component XSDs, pinned to NEMSIS tag `3.5.0.230317CP4` (`VERSION.txt`).
 - `reference/samples/ems_xml/` — the 40 official EMS sample PCRs at the *same* tag. All 40 pass every gate.
-- `reference/valuesets.json` — 467 field definitions, 214 XSD code tables and 6 Defined Lists (2834 codes total), built by `nemsis_gen/valuesets.py`.
-- `reference/definedlists/` — the NEMSIS Defined List JSON exports (ICD-10, RxNorm, SNOMED), pinned to the same tag.
-- `nemsis_gen/validate.py` — three independent gates (well-formedness, XSD, value-set legality) plus defined-list advisories.
-- `nemsis_gen/cli.py` — `valuesets build|show` and `validate`.
+- `reference/definedlists/` — ICD-10 / RxNorm / SNOMED tables for the fields the XSDs cannot enumerate.
+- `reference/valuesets.json` — 467 fields, 214 XSD code tables, 6 defined lists, 2834 codes.
+- `nemsis_gen/schema_model.py` — the document's element order, read from the XSDs rather than transcribed.
+- `nemsis_gen/render.py` — builds the XML from a value tree; round-trips all 40 samples back to valid.
+- `nemsis_gen/generate.py` — two-stage generation (clinical intent, then code selection).
+- `nemsis_gen/mutate.py` — the four deterministic corruptions behind the invalid-by-design tiers.
+- `nemsis_gen/validate.py` — three gates plus defined-list advisories.
+- `nemsis_gen/cli.py` — `generate`, `validate`, `profiles`, `valuesets build|show`.
 
-Next: the two-stage generator (clinical intermediate -> code selection -> code-side XML rendering),
-the graduated 1-5 narrative-quality rubric, and the profile mutations.
+Not yet done: a live end-to-end run (no `ANTHROPIC_API_KEY` was available in the
+build session — every stage either side of the two model calls is tested offline),
+`--concurrency`, and the Schematron gate.
 
 ## Suggested project layout
 
@@ -56,9 +61,12 @@ the graduated 1-5 narrative-quality rubric, and the profile mutations.
 `pyproject.toml` is uv-compatible, so `uv sync` works once it is available.
 
 - Install: `python -m venv .venv && .venv/Scripts/python.exe -m pip install -e ".[dev]"`
+- Generate: `python -m nemsis_gen generate --profile fully_valid --scenario-file scenarios/copd_als.yaml --count 5 --out-dir out/`
+- Estimate first: same command with `--dry-run` (no API calls)
+- List tiers: `python -m nemsis_gen profiles`
+- Validate: `python -m nemsis_gen validate out/`
 - Rebuild code tables: `python -m nemsis_gen valuesets build`
-- Inspect a field: `python -m nemsis_gen valuesets show eDispatch.01`
-- Validate: `python -m nemsis_gen validate reference/samples/ems_xml`
+- Inspect a field: `python -m nemsis_gen valuesets show eMedications.03`
 - Test: `.venv/Scripts/python.exe -m pytest`
 - Lint: `.venv/Scripts/python.exe -m ruff check .`
 
@@ -115,19 +123,30 @@ the graduated 1-5 narrative-quality rubric, and the profile mutations.
 
                                                         ## Claude API call pattern
 
-                                                        - One `messages.create()` call per generated file to start. Revisit the Batches API once volume and tier mix are known (see "Open questions" in `PROJECT.md`) — not needed for the first version.
+Two calls per record, not one — the split is the design, not an optimisation:
 
-                                                        - `system` param, two concatenated blocks:
-                                                          1. **Fixed structural block** (`prompts/system_base.md`): the element-order rule above, the namespace/`schemaLocation` requirement, and the hard output-format constraint — *"output ONLY the XML document, no prose, no markdown code fences, wrapped between `<xml>` and `</xml>` markers"* — so the CLI can extract it with a plain string split instead of a fragile regex or markdown-fence guess. Mark this block with `cache_control: {"type": "ephemeral"}`: it's byte-identical on every call within a batch run, so prompt caching meaningfully cuts cost at volume.
-                                                            2. **Profile block** (from `prompts/profiles.yaml`, keyed by `--profile`): the specific instruction for this quality tier. For `valid_weak_narrative`, for example: *"the record must be schema-valid and clinically coherent with ALS-level interventions performed, but `eNarrative.01` must NOT establish medical necessity per CMS ambulance-transport standards — do not state that transport by other means was contraindicated, describe the patient as ambulatory and low-acuity, and do not tie the interventions performed back to a stated clinical justification."*
+1. **Stage A (clinical).** The model returns a plain-language clinical account as
+   JSON. No codes, no XML.
+2. **Stage B (encoding).** It gets the same catalogue plus its own stage A output
+   and picks a code per field. `temperature=0` — selection is a lookup.
 
-                                                            - `messages`: a single user message containing the template XML (from `--template`, defaulting to `reference/sample_valid_v350.xml`) plus the `--scenario` text (the clinical picture in plain English) plus a restated reminder of the output-format contract.
+Then `render.py` places the values into the document in schema order. The model
+never emits XML, so element-ordering and namespace errors cannot happen by
+accident — only deliberately, via `mutate.py`. And it never recalls a code from
+memory, which is the failure mode that yields plausible, wrong, hard-to-spot data.
 
-                                                            - After the response: extract the content between the `<xml>`/`</xml>` markers, write to `out-dir/<profile>_<index>.xml`, run `validate.py` against `reference/xsd/EMSDataSet_v3.xsd`, and append a manifest row with the result. A response that doesn't contain the markers at all is a logged failure, not a silent skip.
+- `system` is two blocks: the fixed base prompt concatenated with the ~10k-token
+  code catalogue (`cache_control: ephemeral` — byte-identical across a whole run,
+  so it is paid for roughly once), then the per-profile narrative block.
+- Output contract: JSON only, between `<json>` and `</json>` markers, extracted by
+  plain string split. A response without the markers is a logged manifest failure
+  (`output_contract_violation`), never a silent skip.
+- Every selected code is re-checked against the registry after the fact and
+  recorded in `unknown_codes`. The model's claim about its own output is never
+  taken at face value.
+- Back off and retry on 429/408/5xx; per-call token usage lands in the manifest.
 
-                                                            - Error handling: back off and retry on 429s; capture per-call token usage from the API response for the manifest's cost tracking.
-
-                                                            ## Things not to do
+## Things not to do
 
                                                             - No real patient data anywhere in this repo, at any point. Every fixture and every generated file is synthetic.
                                                             - No hardcoded API keys; no committed `.env`.

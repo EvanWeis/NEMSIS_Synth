@@ -1,0 +1,87 @@
+# Quality profiles. Adding a tier is a config change, not a code change.
+#
+# `narrative_quality` drives the 1-5 rubric in narrative_rubric below.
+# `mutation` names a deterministic post-render corruption from nemsis_gen.mutate;
+# those are applied by code, not asked of the model, so an invalid-by-design file
+# fails for exactly the reason the manifest records.
+
+narrative_rubric:
+  5: |
+    The narrative affirmatively establishes medical necessity for ambulance
+    transport under CMS standards (42 CFR 410.40, Medicare Benefit Policy Manual
+    Ch. 10). It states why transport by other means was contraindicated or unsafe,
+    describes the patient's condition at the time of transport in terms that show
+    the ambulance was required, and ties every intervention performed back to a
+    stated clinical justification. Includes a clear chief complaint, assessment
+    findings, treatment, and response to treatment.
+  4: |
+    Clinically complete and medically necessary on the facts, but the necessity
+    argument is implicit rather than stated. Interventions are documented but not
+    all are explicitly justified. A reviewer would approve it; a strict auditor
+    would ask for one or two clarifications.
+  3: |
+    Ambiguous. The narrative documents the encounter but leaves medical necessity
+    genuinely unclear - some findings support it, others suggest the patient could
+    have travelled by other means, and the record does not resolve the tension.
+    No statement about why alternate transport was unsuitable.
+  2: |
+    Weak. Reads as a transport log rather than a clinical account. Interventions
+    appear without stated indication, assessment findings are thin or templated,
+    and nothing addresses why an ambulance was required. A payer would likely deny.
+  1: |
+    Fails entirely. Describes the patient as ambulatory, stable and low-acuity
+    throughout, with no statement that transport by other means was unsafe and no
+    clinical reason offered for any intervention performed. The rest of the record
+    remains schema-valid and clinically coherent - the failure is documentation
+    quality alone, not care quality.
+
+profiles:
+  fully_valid:
+    description: >
+      Schema-valid, clinically coherent, narrative affirmatively supports medical
+      necessity for the level of transport billed.
+    narrative_quality: 5
+    temperature: 0.7
+
+  valid_weak_narrative:
+    description: >
+      Schema-valid and clinically coherent, ALS/BLS care documented and billed,
+      but the narrative fails CMS medical-necessity documentation standards.
+    narrative_quality: 1
+    temperature: 0.7
+
+  ambiguous_narrative:
+    description: >
+      Schema-valid; narrative leaves medical necessity genuinely unclear. The
+      middle of the rubric, for calibrating a scoring model rather than testing
+      the extremes.
+    narrative_quality: 3
+    temperature: 0.8
+
+  schema_invalid_structural:
+    description: >
+      Deliberately wrong element order or a required section removed, to exercise
+      the validator's structural rejection path.
+    narrative_quality: 5
+    temperature: 0.5
+    mutation: {name: structural, params: {}}
+
+  missing_mandatory_fields:
+    description: Structurally correct, but required leaf elements are removed.
+    narrative_quality: 5
+    temperature: 0.5
+    mutation: {name: drop_required_leaves, params: {count: 3}}
+
+  malformed_xml:
+    description: Broken XML syntax, to test parser-level failure.
+    narrative_quality: 5
+    temperature: 0.5
+    mutation: {name: malform, params: {}}
+
+  code_value_violations:
+    description: >
+      Structurally valid but carrying codes outside the legal NEMSIS value set for
+      one or more enumerated fields.
+    narrative_quality: 5
+    temperature: 0.5
+    mutation: {name: illegal_codes, params: {count: 2}}

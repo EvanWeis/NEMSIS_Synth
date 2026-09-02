@@ -1,0 +1,34 @@
+# The five generation inputs, as a reproducible file. Pass with --scenario-file.
+name: copd_exacerbation_als
+
+patient:
+  age: 64
+  sex: male
+  history: [COPD, hypertension, former smoker]
+  acuity: ALS
+
+scene:
+  location: private residence, second floor walk-up
+  time_of_day: 02:10
+  conditions: patient found seated at edge of bed, tripoding
+  disposition: transported ALS to emergency department
+
+assessment:
+  presentation: severe respiratory distress, one-word dyspnea, audible wheeze
+  lung_sounds: diffuse expiratory wheezing, poor air movement bilaterally
+  initial_vitals: {spo2: 84, respiratory_rate: 32, heart_rate: 112, sbp: 138}
+  after_treatment: {spo2: 94, respiratory_rate: 24, heart_rate: 98, sbp: 132}
+  mental_status: alert, anxious, oriented x4
+  ambulation: unable to walk more than two steps without desaturating
+
+interventions:
+  - high-flow oxygen via non-rebreather
+  - nebulized albuterol 2.5 mg
+  - IV access, 18g left antecubital
+  - continuous cardiac monitoring, 12-lead ECG
+
+narrative_outline: >
+  Dispatched for difficulty breathing. Patient in severe distress on arrival,
+  unable to speak in full sentences. Bronchodilator therapy en route with
+  improvement. Continuous oxygen and monitoring required throughout transport;
+  ambulatory transport would have been unsafe given hypoxia on exertion.
