@@ -7,14 +7,19 @@ import random
 import time
 from dataclasses import dataclass
 from dataclasses import field as dc_field
+from pathlib import Path
 
 import anthropic
 from dotenv import load_dotenv
 
 # Loaded here rather than in the CLI so every entry point (CLI, eval scripts,
-# tests) resolves credentials the same way. .env.local wins over .env.
-for _env_file in (".env.local", ".env"):
-    load_dotenv(_env_file, override=False)
+# tests) resolves credentials the same way. .env.local wins over .env, and the
+# current directory wins over the project root - so the tool can be run from any
+# working directory (say, wherever you want the XML written) and still find a key.
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent
+for _directory in (Path.cwd(), _PROJECT_ROOT):
+    for _name in (".env.local", ".env"):
+        load_dotenv(_directory / _name, override=False)
 
 # Sonnet 5 is the measured default: it matched Opus on validity and rubric
 # gradation at roughly half the cost. Override per run with --model.

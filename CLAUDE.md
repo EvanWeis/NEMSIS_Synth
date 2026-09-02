@@ -125,6 +125,9 @@ corpus is mostly advisory: 175 WARNING, 11 ERROR, 10 PASS.
 `pyproject.toml` is uv-compatible, so `uv sync` works once it is available.
 
 - Install: `python -m venv .venv && .venv/Scripts/python.exe -m pip install -e ".[dev]"`
+- Key: put `ANTHROPIC_API_KEY` (or `ANTHROPIC_KEY`) in `.env.local`. It is resolved
+  from the current directory first, then the project root, so the tool runs from
+  any working directory - including the one you want the XML written to.
 - Generate: `python -m nemsis_gen generate --profile fully_valid --scenario-file scenarios/copd_als.yaml --count 5 --out-dir out/`
 - Estimate first: same command with `--dry-run` (no API calls)
 - List tiers: `python -m nemsis_gen profiles`
