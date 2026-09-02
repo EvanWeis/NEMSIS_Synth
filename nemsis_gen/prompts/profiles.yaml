@@ -1,9 +1,18 @@
 # Quality profiles. Adding a tier is a config change, not a code change.
 #
-# `narrative_quality` drives the 1-5 rubric in narrative_rubric below.
-# `mutation` names a deterministic post-render corruption from nemsis_gen.mutate;
-# those are applied by code, not asked of the model, so an invalid-by-design file
-# fails for exactly the reason the manifest records.
+# NEMSIS is the ingestion format, not the thing under test. So almost every tier
+# here is deliberately INGESTIBLE - schema-valid, coded correctly, structurally
+# clean - and carries its defect in the *clinical content*, which is what the QA
+# tool actually reads. A record that fails to ingest never reaches the QA tool and
+# therefore tells it nothing.
+#
+# `expected_findings` is the ground truth for scoring the QA tool: the labels a
+# correct scorer should raise on this record, and nothing else. They land in the
+# manifest, so a bulk run doubles as a labelled evaluation set.
+#
+# `defect` is injected into the stage A (clinical) prompt. Defects are asked of the
+# model because they are clinical judgements; only the ingestion_guard tiers use
+# deterministic post-render mutations, since malformed XML is a mechanical property.
 
 narrative_rubric:
   5: |
@@ -36,52 +45,187 @@ narrative_rubric:
     quality alone, not care quality.
 
 profiles:
+  # ---------------------------------------------------------------- baseline
   fully_valid:
+    family: baseline
     description: >
-      Schema-valid, clinically coherent, narrative affirmatively supports medical
-      necessity for the level of transport billed.
+      Clean record. Clinically coherent, protocol-appropriate, internally
+      consistent, and the narrative affirmatively supports medical necessity.
+      The negative control - a correct QA tool should raise nothing.
     narrative_quality: 5
     effort: high
+    expected_findings: []
 
-  valid_weak_narrative:
+  # ------------------------------------------------------ medical necessity
+  necessity_absent:
+    family: medical_necessity
     description: >
-      Schema-valid and clinically coherent, ALS/BLS care documented and billed,
-      but the narrative fails CMS medical-necessity documentation standards.
+      Ingestible and clinically coherent, ALS/BLS care documented and billed, but
+      the narrative fails CMS medical-necessity documentation standards entirely.
     narrative_quality: 1
     effort: high
+    expected_findings: [medical_necessity_not_established]
 
-  ambiguous_narrative:
+  necessity_ambiguous:
+    family: medical_necessity
     description: >
-      Schema-valid; narrative leaves medical necessity genuinely unclear. The
-      middle of the rubric, for calibrating a scoring model rather than testing
-      the extremes.
+      Narrative leaves medical necessity genuinely unclear. The middle of the
+      rubric, for calibrating a scorer rather than testing its extremes.
     narrative_quality: 3
     effort: high
+    expected_findings: [medical_necessity_ambiguous]
 
-  schema_invalid_structural:
+  necessity_implicit:
+    family: medical_necessity
     description: >
-      Deliberately wrong element order or a required section removed, to exercise
-      the validator's structural rejection path.
-    narrative_quality: 5
-    effort: medium
-    mutation: {name: structural, params: {}}
+      Necessity is real and supportable on the facts but never stated outright.
+      The boundary case most likely to produce a false positive.
+    narrative_quality: 4
+    effort: high
+    expected_findings: [medical_necessity_implicit_only]
 
-  missing_mandatory_fields:
-    description: Structurally correct, but required leaf elements are removed.
-    narrative_quality: 5
-    effort: medium
-    mutation: {name: drop_required_leaves, params: {count: 3}}
+  # ----------------------------------------------------- protocol compliance
+  protocol_deviation:
+    family: protocol_compliance
+    description: >
+      An intervention is performed that the documented protocol does not
+      authorise, while the record stays otherwise coherent and fully ingestible.
+    narrative_quality: 4
+    effort: high
+    defect: |
+      Introduce EXACTLY ONE protocol deviation, and make it the only defect:
+      perform an intervention that the protocol you select in `protocols` does not
+      authorise for this presentation. Keep the intervention clinically plausible
+      and correctly coded - a reviewer should have to compare the intervention
+      against the protocol to notice. Do not comment on the deviation in the
+      narrative, and do not introduce any other inconsistency.
+    expected_findings: [protocol_intervention_not_authorised]
 
-  malformed_xml:
-    description: Broken XML syntax, to test parser-level failure.
+  scope_of_practice:
+    family: protocol_compliance
+    description: >
+      An ALS-level intervention is documented on a response staffed and billed at
+      BLS level.
+    narrative_quality: 4
+    effort: high
+    defect: |
+      Document the response as BLS level throughout - `level_of_care_provided`,
+      crew capability and billing all BLS - but include EXACTLY ONE clearly
+      ALS-level intervention (for example a medication push, advanced airway, or
+      cardiac monitoring) in `procedures` or `medications`. Everything else stays
+      consistent. Do not remark on the mismatch in the narrative.
+    expected_findings: [intervention_exceeds_level_of_care]
+
+  # -------------------------------------------------- cross-field consistency
+  contradictory_vitals:
+    family: cross_field_consistency
+    description: >
+      Vital signs contradict the documented impression and narrative, while every
+      value stays individually plausible and in range.
+    narrative_quality: 4
+    effort: high
+    defect: |
+      Make the vital signs contradict the clinical picture. Every individual value
+      must be physiologically plausible and in a normal-looking range, and the
+      narrative must describe a patient consistent with the impression - but the
+      numbers must not support it (for example, a patient described in severe
+      respiratory distress whose SpO2, respiratory rate and work of breathing are
+      all unremarkable). Change nothing else.
+    expected_findings: [vitals_contradict_impression]
+
+  acuity_mismatch:
+    family: cross_field_consistency
+    description: >
+      Documented patient acuity is inconsistent with the findings, interventions
+      and disposition.
+    narrative_quality: 4
+    effort: high
+    defect: |
+      Set `initial_patient_acuity` and `final_patient_acuity` to a level that does
+      not fit the findings or the care delivered - for example a critical
+      presentation with aggressive intervention recorded as minor acuity, or a
+      minor complaint recorded as critical. Keep everything else coherent.
+    expected_findings: [acuity_inconsistent_with_findings]
+
+  unindicated_intervention:
+    family: cross_field_consistency
+    description: >
+      An intervention is performed with no supporting finding anywhere in the
+      record - no symptom, impression, exam finding or vital sign indicates it.
+    narrative_quality: 4
+    effort: high
+    defect: |
+      Include EXACTLY ONE intervention in `medications` or `procedures` that
+      nothing else in the record indicates: no symptom, impression, exam finding
+      or vital sign supports it, and the narrative does not justify it. Keep the
+      intervention correctly coded and plausible in isolation.
+    expected_findings: [intervention_without_indication]
+
+  # ------------------------------------------------------- documentation gaps
+  documentation_gap:
+    family: agency_qa
+    description: >
+      Codes are complete and the record ingests cleanly, but the human-readable
+      documentation is too thin to support review.
+    narrative_quality: 2
+    effort: high
+    defect: |
+      Keep every coded field complete and correct, but make the narrative
+      uselessly thin - a few templated sentences that add nothing the coded fields
+      do not already say, with no assessment reasoning and no response to
+      treatment. Do not contradict anything.
+    expected_findings: [narrative_insufficient_for_review, treatment_response_not_documented]
+
+  no_reassessment:
+    family: agency_qa
+    description: >
+      An intervention is performed but its effect is never reassessed - the
+      shape most quality measures look for.
+    narrative_quality: 4
+    effort: high
+    defect: |
+      Perform an intervention that calls for follow-up assessment (analgesia, a
+      bronchodilator, glucose) but record NO post-intervention vital signs and no
+      reassessment of the treated complaint: a single set of vitals taken before
+      treatment, and nothing after. The narrative must not describe any response
+      to treatment either.
+    expected_findings: [no_post_intervention_reassessment]
+
+  # ------------------------------------------------------- ingestion guard
+  # These do NOT reach the QA tool - they exercise the ingestion boundary itself.
+  # Keep the group small; a record that will not load teaches the QA tool nothing.
+  ingest_malformed_xml:
+    family: ingestion_guard
+    description: Broken XML syntax, to test parser-level rejection at ingest.
     narrative_quality: 5
     effort: medium
+    ingestible: false
     mutation: {name: malform, params: {}}
+    expected_findings: [rejected_at_ingest]
 
-  code_value_violations:
-    description: >
-      Structurally valid but carrying codes outside the legal NEMSIS value set for
-      one or more enumerated fields.
+  ingest_schema_invalid:
+    family: ingestion_guard
+    description: Wrong element order, to test structural rejection at ingest.
     narrative_quality: 5
     effort: medium
+    ingestible: false
+    mutation: {name: structural, params: {}}
+    expected_findings: [rejected_at_ingest]
+
+  ingest_missing_mandatory:
+    family: ingestion_guard
+    description: Required elements removed, to test completeness rejection at ingest.
+    narrative_quality: 5
+    effort: medium
+    ingestible: false
+    mutation: {name: drop_required_leaves, params: {count: 3}}
+    expected_findings: [rejected_at_ingest]
+
+  ingest_bad_codes:
+    family: ingestion_guard
+    description: Codes outside the legal NEMSIS value set, to test code rejection at ingest.
+    narrative_quality: 5
+    effort: medium
+    ingestible: false
     mutation: {name: illegal_codes, params: {count: 2}}
+    expected_findings: [rejected_at_ingest]

@@ -1,0 +1,33 @@
+name: behavioral_bls
+patient:
+  age: 23
+  sex: female
+  history:
+  - bipolar disorder
+  acuity: BLS
+scene:
+  location: university dormitory
+  time_of_day: '21:40'
+  conditions: police on scene, patient agitated but cooperative with EMS
+  disposition: transported BLS to emergency department for evaluation
+assessment:
+  presentation: acute agitation, pressured speech, no trauma or intoxication
+  initial_vitals:
+    spo2: 99
+    respiratory_rate: 20
+    heart_rate: 104
+    sbp: 128
+    glucose: 88
+  after_treatment:
+    spo2: 99
+    respiratory_rate: 18
+    heart_rate: 92
+    sbp: 122
+  mental_status: alert, oriented x4, calming with verbal de-escalation
+interventions:
+- verbal de-escalation
+- blood glucose check
+- serial vital signs
+- continuous observation
+narrative_outline: Behavioural emergency managed without restraint or sedation. Continuous observation
+  required for patient and crew safety during transport.

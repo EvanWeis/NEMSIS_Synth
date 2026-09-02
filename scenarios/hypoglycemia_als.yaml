@@ -1,0 +1,34 @@
+name: hypoglycemia_als
+patient:
+  age: 54
+  sex: male
+  history:
+  - type 1 diabetes
+  acuity: ALS
+scene:
+  location: workplace loading dock
+  time_of_day: '16:15'
+  conditions: found confused and diaphoretic by coworkers
+  disposition: treated and transported ALS to emergency department
+assessment:
+  presentation: altered mental status, diaphoresis, tremor
+  initial_vitals:
+    spo2: 98
+    respiratory_rate: 18
+    heart_rate: 110
+    sbp: 142
+    glucose: 38
+  after_treatment:
+    spo2: 99
+    respiratory_rate: 16
+    heart_rate: 88
+    sbp: 132
+    glucose: 112
+  mental_status: initially confused and combative, GCS 13; baseline after treatment
+interventions:
+- blood glucose check
+- IV access
+- dextrose 10% 25 g IV
+- repeat glucose and mental status reassessment
+narrative_outline: Symptomatic hypoglycaemia corrected with IV dextrose. Mental status returned to
+  baseline; monitored transport still required for recurrence risk.

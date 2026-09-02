@@ -40,7 +40,31 @@ artefacts:
 for the field's XSD type) are recorded separately — conflating them makes
 `unknown_codes` useless as a signal that something actually went wrong.
 
-Not yet done: `--concurrency`.
+### What the fixtures are for
+
+NEMSIS is the **ingestion format, not the thing under test**. Records load into a
+database built around NEMSIS structure; the QA tool downstream scores protocol
+compliance, medical necessity, cross-field consistency, GAMUT/NEMSQA measures and
+internal agency checks against the *clinical content*.
+
+So almost every profile is deliberately **ingestible** and carries its defect in the
+clinical content. A record that fails to load never reaches the QA tool and teaches
+it nothing - which is why the four `ingestion_guard` tiers are a small, separate
+group rather than half the tier list.
+
+Each profile declares `expected_findings`: the labels a correct QA tool should raise
+on that record, and nothing else. They land in every manifest row, so a bulk run
+doubles as a **labelled evaluation set** - precision and recall are computable
+against it. `fully_valid` is the negative control: a correct tool raises nothing.
+
+Six families: `baseline`, `medical_necessity`, `protocol_compliance`,
+`cross_field_consistency`, `agency_qa`, `ingestion_guard`. Defects are asked of the
+model (they are clinical judgements); only `ingestion_guard` uses deterministic
+post-render mutation, since malformed XML is mechanical.
+
+`--concurrency N` generates N records in parallel (each record is two sequential
+calls). Note that parallel workers race the prompt cache: at concurrency 4 the first
+wave pays four cache creations. Generate one record first to warm it, then fan out.
 
 ### Schematron (business rules)
 

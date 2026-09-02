@@ -49,6 +49,7 @@ class ValidationResult:
 
     def to_json(self) -> dict:
         return {
+            "ok": self.ok,
             "well_formed": self.well_formed,
             "xsd_valid": self.xsd_valid,
             "code_valid": self.code_valid,

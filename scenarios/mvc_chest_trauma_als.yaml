@@ -1,0 +1,33 @@
+name: mvc_chest_trauma_als
+patient:
+  age: 42
+  sex: male
+  history: []
+  acuity: ALS
+scene:
+  location: highway, two-vehicle collision
+  time_of_day: '18:20'
+  conditions: restrained driver, moderate intrusion, airbag deployed, self-extricated
+  disposition: transported ALS to Level I trauma centre
+assessment:
+  presentation: chest wall pain, seatbelt bruising, mild dyspnoea
+  lung_sounds: diminished on the left
+  initial_vitals:
+    spo2: 94
+    respiratory_rate: 24
+    heart_rate: 104
+    sbp: 128
+  after_treatment:
+    spo2: 97
+    respiratory_rate: 20
+    heart_rate: 96
+    sbp: 124
+  mental_status: alert, oriented x4, GCS 15
+interventions:
+- spinal motion restriction
+- supplemental oxygen
+- IV access
+- continuous monitoring
+- trauma centre pre-alert
+narrative_outline: Blunt chest trauma with suspected pneumothorax. Mechanism and findings met trauma
+  triage criteria; immobilised transport required.

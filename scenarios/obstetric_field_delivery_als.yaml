@@ -1,0 +1,34 @@
+name: obstetric_field_delivery_als
+patient:
+  age: 27
+  sex: female
+  history:
+  - G3P2, 39 weeks gestation
+  acuity: ALS
+scene:
+  location: private residence
+  time_of_day: 03:05
+  conditions: contractions two minutes apart, crowning on arrival
+  disposition: delivery on scene, mother and neonate transported ALS
+assessment:
+  presentation: active labour, spontaneous vaginal delivery on scene
+  initial_vitals:
+    spo2: 98
+    respiratory_rate: 22
+    heart_rate: 112
+    sbp: 132
+  after_treatment:
+    spo2: 99
+    respiratory_rate: 18
+    heart_rate: 94
+    sbp: 124
+  neonate: term male, APGAR 8 at 1 minute and 9 at 5 minutes, vigorous
+  mental_status: alert, oriented x4
+interventions:
+- assisted delivery
+- cord clamping and cutting
+- neonatal drying, warming and stimulation
+- fundal massage
+- IV access
+narrative_outline: Precipitous field delivery. Mother and neonate both required monitored transport;
+  no alternative transport was appropriate.

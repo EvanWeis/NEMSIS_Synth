@@ -1,0 +1,35 @@
+name: seizure_peds_als
+patient:
+  age: 4
+  sex: female
+  history:
+  - febrile seizure at age 2
+  acuity: ALS
+scene:
+  location: daycare centre
+  time_of_day: '10:50'
+  conditions: witnessed generalised tonic-clonic seizure lasting about 4 minutes
+  disposition: transported ALS to paediatric-capable facility
+assessment:
+  presentation: postictal, sleepy but rousable, febrile to touch
+  initial_vitals:
+    spo2: 95
+    respiratory_rate: 26
+    heart_rate: 148
+    sbp: 92
+    temperature: 39.4
+    glucose: 96
+  after_treatment:
+    spo2: 98
+    respiratory_rate: 22
+    heart_rate: 128
+    sbp: 94
+  mental_status: postictal GCS 12, improving to 15 en route
+interventions:
+- airway positioning and suction
+- supplemental oxygen
+- blood glucose check
+- passive cooling
+- continuous monitoring
+narrative_outline: Febrile seizure in a young child, postictal on arrival. Airway monitoring required
+  throughout; parent transport was unsafe given recurrence risk.

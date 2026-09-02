@@ -1,0 +1,36 @@
+name: stroke_als
+patient:
+  age: 68
+  sex: male
+  history:
+  - hypertension
+  - hyperlipidaemia
+  acuity: ALS
+scene:
+  location: private residence
+  time_of_day: 07:25
+  conditions: last known well 06:50, onset witnessed by spouse
+  disposition: transported ALS emergent to comprehensive stroke centre
+assessment:
+  presentation: right facial droop, right arm drift, expressive aphasia
+  initial_vitals:
+    spo2: 97
+    respiratory_rate: 18
+    heart_rate: 82
+    sbp: 178
+    glucose: 104
+  after_treatment:
+    spo2: 98
+    respiratory_rate: 18
+    heart_rate: 78
+    sbp: 170
+  stroke_scale: Cincinnati positive on all three components
+  mental_status: alert, follows commands, expressive deficit
+interventions:
+- stroke scale assessment
+- blood glucose check
+- IV access x2
+- stroke alert to receiving facility
+- continuous monitoring
+narrative_outline: Acute ischaemic stroke inside the thrombolytic window. Stroke alert transmitted
+  from scene; time-critical monitored transport required.

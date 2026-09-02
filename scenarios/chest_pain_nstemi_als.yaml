@@ -1,0 +1,35 @@
+name: chest_pain_nstemi_als
+patient:
+  age: 61
+  sex: male
+  history:
+  - prior coronary stent
+  - hypertension
+  acuity: ALS
+scene:
+  location: gymnasium
+  time_of_day: '19:05'
+  conditions: onset during exercise, partially relieved at rest
+  disposition: transported ALS to PCI-capable centre
+assessment:
+  presentation: substernal chest pressure 6 of 10, mild dyspnoea, no radiation
+  initial_vitals:
+    spo2: 96
+    respiratory_rate: 20
+    heart_rate: 92
+    sbp: 148
+  after_treatment:
+    spo2: 98
+    respiratory_rate: 18
+    heart_rate: 84
+    sbp: 132
+  ecg: 12-lead without ST elevation, nonspecific T-wave changes
+  mental_status: alert, oriented x4
+interventions:
+- 12-lead ECG
+- aspirin 324 mg chewed
+- nitroglycerin 0.4 mg SL
+- IV access
+- continuous monitoring
+narrative_outline: Suspected acute coronary syndrome without ST elevation. Serial ECG and monitoring
+  required en route; arrhythmia risk made private transport unsafe.

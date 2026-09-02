@@ -1,0 +1,33 @@
+name: opioid_overdose_als
+patient:
+  age: 31
+  sex: male
+  history:
+  - opioid use disorder
+  acuity: ALS
+scene:
+  location: public restroom
+  time_of_day: '23:10'
+  conditions: found unresponsive by staff, bystander naloxone before arrival
+  disposition: transported ALS to emergency department
+assessment:
+  presentation: depressed respirations, pinpoint pupils, improving after naloxone
+  initial_vitals:
+    spo2: 88
+    respiratory_rate: 8
+    heart_rate: 64
+    sbp: 104
+  after_treatment:
+    spo2: 97
+    respiratory_rate: 16
+    heart_rate: 76
+    sbp: 112
+  mental_status: initially unresponsive GCS 7; GCS 14 after naloxone
+interventions:
+- bag-valve-mask ventilation
+- naloxone 1 mg intranasal
+- IV access
+- waveform capnography
+- continuous monitoring
+narrative_outline: Opioid overdose with respiratory depression reversed by naloxone. Re-sedation risk
+  required monitored transport.

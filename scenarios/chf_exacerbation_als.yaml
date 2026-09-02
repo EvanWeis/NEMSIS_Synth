@@ -1,0 +1,36 @@
+name: chf_exacerbation_als
+patient:
+  age: 79
+  sex: female
+  history:
+  - CHF
+  - atrial fibrillation
+  - CKD stage 3
+  acuity: ALS
+scene:
+  location: private residence
+  time_of_day: 04:40
+  conditions: found upright in recliner, unable to lie flat, pitting oedema
+  disposition: transported ALS to emergency department
+assessment:
+  presentation: acute dyspnoea, orthopnoea, pink frothy sputum
+  lung_sounds: coarse crackles to mid-lung fields bilaterally
+  initial_vitals:
+    spo2: 86
+    respiratory_rate: 30
+    heart_rate: 124
+    sbp: 186
+  after_treatment:
+    spo2: 93
+    respiratory_rate: 24
+    heart_rate: 108
+    sbp: 158
+  mental_status: alert, anxious, oriented x4
+interventions:
+- CPAP 10 cm H2O
+- nitroglycerin 0.4 mg SL x2
+- IV access
+- 12-lead ECG
+- continuous cardiac monitoring
+narrative_outline: Acute decompensated heart failure with pulmonary oedema. CPAP and nitrates en route
+  with improvement. Positive pressure could not have been maintained outside an ambulance.

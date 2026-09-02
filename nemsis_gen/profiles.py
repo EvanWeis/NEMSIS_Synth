@@ -25,21 +25,36 @@ class Mutation:
 @dataclass(frozen=True)
 class Profile:
     name: str
+    family: str
     description: str
     narrative_quality: int
     effort: str
     mutation: Mutation | None
+    defect: str
+    expected_findings: tuple[str, ...]
+    ingestible: bool
 
     @property
     def expects_valid(self) -> bool:
-        """Whether a correct run of this profile should produce a valid file."""
-        return self.mutation is None
+        """Whether a correct run should produce an ingestible file.
+
+        Almost every tier is ingestible on purpose: NEMSIS is the wire format, not
+        the thing under test, and a record that will not load never reaches the QA
+        tool. Only the ingestion_guard family is meant to fail.
+        """
+        return self.ingestible
 
 
 @dataclass(frozen=True)
 class ProfileConfig:
     profiles: dict[str, Profile]
     narrative_rubric: dict[int, str]
+
+    def by_family(self) -> dict[str, list[Profile]]:
+        families: dict[str, list[Profile]] = {}
+        for profile in self.profiles.values():
+            families.setdefault(profile.family, []).append(profile)
+        return families
 
     def get(self, name: str) -> Profile:
         if name not in self.profiles:
@@ -59,10 +74,14 @@ def load_profiles(path: Path = PROFILES_PATH) -> ProfileConfig:
         mutation = raw.get("mutation")
         profiles[name] = Profile(
             name=name,
+            family=str(raw.get("family", "uncategorised")),
             description=" ".join(raw["description"].split()),
             narrative_quality=int(raw["narrative_quality"]),
             effort=str(raw.get("effort", "high")),
             mutation=Mutation(mutation["name"], mutation.get("params") or {}) if mutation else None,
+            defect=(raw.get("defect") or "").strip(),
+            expected_findings=tuple(raw.get("expected_findings") or ()),
+            ingestible=bool(raw.get("ingestible", mutation is None)),
         )
     rubric = {int(k): v for k, v in data["narrative_rubric"].items()}
     return ProfileConfig(profiles=profiles, narrative_rubric=rubric)
@@ -73,18 +92,32 @@ def load_system_base(path: Path = SYSTEM_BASE_PATH) -> str:
 
 
 def narrative_instruction_text(profile: Profile, config: ProfileConfig) -> str:
-    """The per-profile system block: which rubric level this record must hit."""
-    return "\n\n".join(
-        [
-            f"## Quality profile: {profile.name}",
-            profile.description,
-            f"### Narrative quality target: {profile.narrative_quality} of 5",
-            config.rubric_for(profile.narrative_quality),
+    """The per-profile system block: rubric level, plus any deliberate defect."""
+    blocks = [
+        f"## Quality profile: {profile.name}",
+        profile.description,
+        f"### Narrative quality target: {profile.narrative_quality} of 5",
+        config.rubric_for(profile.narrative_quality),
+    ]
+    if profile.defect:
+        blocks += [
+            "### Deliberate defect for this tier",
+            profile.defect,
             (
-                "The narrative must land at exactly this level. Every other part of "
-                "the record stays clinically coherent and schema-valid regardless of "
-                "the narrative target - documentation quality is the only variable "
-                "this dial controls."
+                "The record must remain fully ingestible: schema-valid, correctly "
+                "coded, structurally clean. The defect lives in the clinical "
+                "content only. Introduce no defect other than the one described - "
+                "this record is a labelled fixture, and an extra flaw makes it "
+                "useless as ground truth."
+            ),
+        ]
+    return "\n\n".join(
+        blocks
+        + [
+            (
+                "The narrative must land at exactly this level. Apart from any "
+                "deliberate defect above, every other part of the record stays "
+                "clinically coherent and schema-valid."
             ),
         ]
     )

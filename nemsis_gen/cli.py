@@ -3,15 +3,17 @@
 from __future__ import annotations
 
 import json
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 import click
 
 from .api_client import DEFAULT_MODEL, ApiClient, OutputContractError
+from .direct import generate_direct, load_exemplars
 from .generate import DEFAULT_TEMPLATE, build_cached_system, generate_record
 from .manifest import Manifest
 from .mutate import apply_mutation
-from .profiles import load_profiles
+from .profiles import load_profiles, load_system_base
 from .scenario import Scenario
 from .validate import DEFAULT_SCHEMA, schematron_validate, validate_file
 from .valuesets import (
@@ -21,6 +23,8 @@ from .valuesets import (
     load_registry,
     write_registry,
 )
+
+NL = chr(10)
 
 
 @click.group()
@@ -137,18 +141,18 @@ def validate_cmd(
         raise SystemExit(1)
 
 
-if __name__ == "__main__":
-    cli()
-
-
 @cli.command("profiles")
 def profiles_cmd() -> None:
     """List the configured quality profiles."""
     config = load_profiles()
-    for name, profile in sorted(config.profiles.items()):
-        expected = "valid" if profile.expects_valid else f"invalid ({profile.mutation.name})"
-        click.echo(f"{name:28} narrative={profile.narrative_quality}/5  expects {expected}")
-        click.echo(f"  {profile.description}")
+    for family, profiles in sorted(config.by_family().items()):
+        click.echo(NL + family)
+        for profile in sorted(profiles, key=lambda p: p.name):
+            gate = "ingestible" if profile.ingestible else "rejected at ingest"
+            click.echo(f"  {profile.name:26} narrative={profile.narrative_quality}/5  {gate}")
+            click.echo(f"    {profile.description}")
+            if profile.expected_findings:
+                click.echo(f"    expects: {', '.join(profile.expected_findings)}")
 
 
 @cli.command("generate")
@@ -161,6 +165,12 @@ def profiles_cmd() -> None:
     help="Structured scenario YAML (patient, scene, assessment, interventions, narrative).",
 )
 @click.option("--count", default=1, show_default=True)
+@click.option(
+    "--concurrency",
+    default=1,
+    show_default=True,
+    help="Records generated in parallel. Each record is two sequential API calls.",
+)
 @click.option("--out-dir", type=click.Path(path_type=Path), default=Path("out"), show_default=True)
 @click.option("--model", default=DEFAULT_MODEL, show_default=True)
 @click.option(
@@ -193,6 +203,7 @@ def generate_cmd(
     scenario_text: str | None,
     scenario_file: Path | None,
     count: int,
+    concurrency: int,
     out_dir: Path,
     model: str,
     coder_model: str | None,
@@ -240,44 +251,54 @@ def generate_cmd(
     except RuntimeError as exc:
         raise click.ClickException(str(exc)) from exc
 
-    written = 0
-    for index in range(count):
+    def produce(index: int) -> tuple[dict, bool]:
+        """Generate, mutate and validate one record. Never raises - a failed
+        record is a manifest row, not a crashed run."""
         name = f"{profile.name}_{index + 1:03d}.xml"
         path = out_dir / name
         row: dict = {
             "file": str(path),
             "profile": profile.name,
+            "family": profile.family,
             "narrative_quality": profile.narrative_quality,
+            "expected_findings": list(profile.expected_findings),
+            "ingestible": profile.ingestible,
             "scenario": scenario.to_json(),
             "model": model,
             "coder_model": coder_model or model,
             "template": str(template),
+            "mode": mode,
         }
 
         try:
-            result = generate_record(client, scenario, profile, config, registry, template=template)
+            if mode == "direct":
+                data = generate_direct(
+                    client,
+                    scenario,
+                    profile,
+                    config,
+                    registry,
+                    load_system_base(),
+                    load_exemplars(limit=shots) if shots else [],
+                )
+                row["shots"] = shots
+            else:
+                result = generate_record(
+                    client, scenario, profile, config, registry, template=template, coder=coder
+                )
+                data = result.xml
+                row["unknown_codes"] = result.unknown_codes
+                row["render_report"] = result.render_report.to_json()
+                row["off_defined_list"] = result.off_defined_list
+                row["not_applicable"] = result.not_applicable
+                row["timeline"] = result.timeline
+                row["narrative"] = result.clinical.get("narrative", "")
         except OutputContractError as exc:
             row.update(status="output_contract_violation", error=str(exc), raw=exc.raw[:2000])
-            manifest.append(row)
-            click.echo(f"FAIL  {name}  model did not honour the output contract")
-            continue
+            return row, False
         except Exception as exc:  # noqa: BLE001 - a failed record is data, not a crash
             row.update(status="generation_error", error=f"{type(exc).__name__}: {exc}")
-            manifest.append(row)
-            click.echo(f"FAIL  {name}  {type(exc).__name__}: {exc}")
-            continue
-
-        row["mode"] = mode
-        if result is not None:
-            data = result.xml
-            row["unknown_codes"] = result.unknown_codes
-            row["render_report"] = result.render_report.to_json()
-            row["off_defined_list"] = result.off_defined_list
-            row["not_applicable"] = result.not_applicable
-            row["timeline"] = result.timeline
-            row["narrative"] = result.clinical.get("narrative", "")
-        else:
-            row["shots"] = shots
+            return row, False
 
         if profile.mutation is not None:
             data, description = apply_mutation(
@@ -286,25 +307,55 @@ def generate_cmd(
             row["mutation"] = {"name": profile.mutation.name, "applied": description}
 
         path.write_bytes(data)
-        written += 1
 
         if validate:
             outcome = validate_file(path, registry=registry)
             row["validation"] = outcome.to_json()
             row["expected_valid"] = profile.expects_valid
             row["matched_expectation"] = outcome.ok == profile.expects_valid
-            status = "PASS" if outcome.ok else "FAIL"
-            flag = "" if row["matched_expectation"] else "  !! did not match profile expectation"
-            click.echo(f"{status}  {name}{flag}")
-        else:
-            click.echo(f"WROTE {name}")
 
         row["status"] = "ok"
         row["usage"] = client.usage.to_json()
         if coder is not None:
             row["coder_usage"] = coder.usage.to_json()
-        manifest.append(row)
+        return row, True
+
+    def report(row: dict) -> None:
+        name = Path(row["file"]).name
+        if row["status"] != "ok":
+            click.echo(f"FAIL  {name}  {row.get('error', row['status'])}")
+        elif "validation" not in row:
+            click.echo(f"WROTE {name}")
+        else:
+            # A tier is correct when the file's ingestibility matches its intent -
+            # so an ingestion_guard record that fails to load is a PASS.
+            matched = row["matched_expectation"]
+            status = "OK  " if matched else "WRONG"
+            detail = "ingests" if row["validation"]["ok"] else "rejected at ingest"
+            flag = "" if matched else "  !! did not match profile expectation"
+            click.echo(f"{status}  {name:34} {detail}{flag}")
+
+    written = 0
+    if concurrency > 1:
+        # Each record is two sequential calls; parallelism is across records.
+        with ThreadPoolExecutor(max_workers=concurrency) as pool:
+            futures = {pool.submit(produce, i): i for i in range(count)}
+            for future in as_completed(futures):
+                row, produced = future.result()
+                written += produced
+                manifest.append(row)
+                report(row)
+    else:
+        for index in range(count):
+            row, produced = produce(index)
+            written += produced
+            manifest.append(row)
+            report(row)
 
     click.echo(f"\n{written}/{count} written to {out_dir}")
     click.echo(f"manifest: {manifest.path}")
     click.echo(f"tokens: {json.dumps(client.usage.to_json())}")
+
+
+if __name__ == "__main__":
+    cli()
