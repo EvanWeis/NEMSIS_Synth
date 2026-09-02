@@ -13,6 +13,8 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0", "ruff>=0.6"]
+# NEMSIS Schematron is queryBinding="xslt2"; lxml's isoschematron is XSLT 1.0 only.
+schematron = ["saxonche>=12.4"]
 
 [project.scripts]
 nemsis-gen = "nemsis_gen.cli:cli"

@@ -13,7 +13,7 @@ from .manifest import Manifest
 from .mutate import apply_mutation
 from .profiles import load_profiles
 from .scenario import Scenario
-from .validate import DEFAULT_SCHEMA, validate_file
+from .validate import DEFAULT_SCHEMA, schematron_validate, validate_file
 from .valuesets import (
     DEFAULT_REGISTRY_PATH,
     DEFAULT_XSD_DIR,
@@ -73,7 +73,25 @@ def valuesets_show(field: str) -> None:
 @click.argument("paths", nargs=-1, required=True, type=click.Path(exists=True, path_type=Path))
 @click.option("--schema", type=click.Path(path_type=Path), default=DEFAULT_SCHEMA)
 @click.option("--json", "as_json", is_flag=True, help="Emit one JSON object per file.")
-def validate_cmd(paths: tuple[Path, ...], schema: Path, as_json: bool) -> None:
+@click.option(
+    "--schematron",
+    is_flag=True,
+    help="Also run Schematron business rules.",
+)
+@click.option(
+    "--rules",
+    "rules_path",
+    type=click.Path(exists=True, path_type=Path),
+    default=None,
+    help="Path to your own .sch rule set (implies --schematron).",
+)
+def validate_cmd(
+    paths: tuple[Path, ...],
+    schema: Path,
+    as_json: bool,
+    schematron: bool,
+    rules_path: Path | None,
+) -> None:
     """Validate XML files: well-formedness, XSD structure, and code value sets."""
     registry = load_registry()
     files: list[Path] = []
@@ -84,8 +102,14 @@ def validate_cmd(paths: tuple[Path, ...], schema: Path, as_json: bool) -> None:
     for path in files:
         result = validate_file(path, schema_path=schema, registry=registry)
         failed += not result.ok
+        sch = None
+        if schematron or rules_path is not None:
+            sch = schematron_validate(path, rules_path)
         if as_json:
-            click.echo(json.dumps({"file": str(path), **result.to_json()}))
+            payload = {"file": str(path), **result.to_json()}
+            if sch is not None:
+                payload["schematron"] = sch.to_json()
+            click.echo(json.dumps(payload))
         else:
             status = "PASS" if result.ok else "FAIL"
             warned = (
@@ -96,6 +120,16 @@ def validate_cmd(paths: tuple[Path, ...], schema: Path, as_json: bool) -> None:
             click.echo(f"{status}  {path.name}{warned}")
             for msg in (result.errors + result.code_errors)[:5]:
                 click.echo(f"      {msg}")
+            if sch is not None:
+                if not sch.ran:
+                    click.echo(f"      schematron did not run: {sch.error[:90]}")
+                else:
+                    label = "clean" if sch.ok else f"{len(sch.errors)} error(s)"
+                    extra = len(sch.failures) - len(sch.errors)
+                    warn = f", {extra} warning(s)" if extra else ""
+                    click.echo(f"      schematron [{sch.rules}]: {label}{warn}")
+                    for a in sch.errors[:3]:
+                        click.echo(f"        {a.rule_id}: {a.message[:88]}")
 
     if not as_json:
         click.echo(f"\n{len(files) - failed}/{len(files)} passed")

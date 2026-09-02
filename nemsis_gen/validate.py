@@ -130,14 +130,14 @@ def validate_bytes(
     )
 
 
-def schematron_validate(path: Path, schematron_path: Path) -> tuple[bool, list[str]]:
-    """NEMSIS business-rule layer - stricter than XSD, reported independently."""
-    from lxml.isoschematron import Schematron
+def schematron_validate(path: Path, rules_path: Path | None = None):
+    """NEMSIS business-rule layer - reported independently of the three gates.
 
-    sct = Schematron(etree.parse(str(schematron_path)), store_report=True)
-    valid = sct.validate(etree.parse(str(path)))
-    msgs = []
-    if not valid and sct.validation_report is not None:
-        for fail in sct.validation_report.iter("{http://purl.oclc.org/dsdl/svrl}failed-assert"):
-            msgs.append(" ".join("".join(fail.itertext()).split()))
-    return valid, msgs
+    Delegates to :mod:`nemsis_gen.schematron`, which drives the ISO XSLT2 pipeline
+    through Saxon. lxml's own isoschematron cannot be used here: the NEMSIS rules
+    declare ``queryBinding="xslt2"`` and it refuses them outright.
+    """
+    from .schematron import DEFAULT_RULES
+    from .schematron import validate as run_schematron
+
+    return run_schematron(path, rules_path or DEFAULT_RULES)

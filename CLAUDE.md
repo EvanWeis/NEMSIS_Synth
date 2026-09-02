@@ -40,7 +40,26 @@ artefacts:
 for the field's XSD type) are recorded separately — conflating them makes
 `unknown_codes` useless as a signal that something actually went wrong.
 
-Not yet done: `--concurrency` and the Schematron gate.
+Not yet done: `--concurrency`.
+
+### Schematron (business rules)
+
+A fourth, independent signal, reported alongside the three gates - `nemsis-gen
+validate out/ --schematron`, or `--rules path/to/your.sch`. Two findings shaped it:
+
+- **NEMSIS Schematron is `queryBinding="xslt2"`.** `lxml.isoschematron` is XSLT 1.0
+  only and refuses to compile it. `nemsis_gen/schematron.py` drives the official ISO
+  skeleton pipeline through Saxon (`pip install -e ".[schematron]"`) instead.
+- **The 187 national rules are not published as Schematron source.** The public repo
+  ships a *sample* rule set (8 asserts, nil/NV/PN consistency), the dev kit, and a
+  196-case test corpus with expected verdicts - but not the rules that corpus
+  exercises. Real business rules are state- or agency-authored; point `--rules` at
+  yours.
+
+Measured against the official corpus (`scripts/eval_schematron.py`), the bundled
+sample rule set flags 8 of the 11 ERROR cases, misses 3 (`e143`-`e145`, medication
+CodeType format), and produces **zero false positives** across the 185 others. The
+corpus is mostly advisory: 175 WARNING, 11 ERROR, 10 PASS.
 
 ## Suggested project layout
 
