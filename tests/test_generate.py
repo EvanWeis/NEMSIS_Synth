@@ -111,10 +111,11 @@ def test_generated_record_is_schema_valid(registry, model):
     sections, demographic, _uuid = value_tree_from_document(
         DEFAULT_TEMPLATE.read_bytes(), model=model
     )
-    unknown = apply_selections(
+    unknown, off_list = apply_selections(
         sections, CLINICAL, _codes(registry), load_fieldplan(), model, registry
     )
     assert unknown == []
+    assert off_list == []
 
     xml, report = render_dataset(sections, demographic, model=model)
     assert report.unknown_keys == []
@@ -144,8 +145,22 @@ def test_a_code_off_the_table_is_recorded_not_silently_accepted(registry, model)
     )
     codes = _codes(registry)
     codes["singletons"]["eDispatch.01"] = "9999999"
-    unknown = apply_selections(sections, CLINICAL, codes, load_fieldplan(), model, registry)
+    unknown, _off = apply_selections(sections, CLINICAL, codes, load_fieldplan(), model, registry)
     assert unknown == ["eDispatch.01=9999999"]
+
+
+def test_a_code_off_a_defined_list_is_an_advisory_not_an_illegal_value(registry, model):
+    """eSituation.11 admits any ICD-10 code, so an off-list pick is soft."""
+    sections, demographic, _uuid = value_tree_from_document(
+        DEFAULT_TEMPLATE.read_bytes(), model=model
+    )
+    codes = _codes(registry)
+    codes["singletons"]["eSituation.11"] = "Z99.999"
+    unknown, off_list = apply_selections(
+        sections, CLINICAL, codes, load_fieldplan(), model, registry
+    )
+    assert unknown == []
+    assert off_list == ["eSituation.11=Z99.999"]
 
 
 def test_medication_code_carries_its_codetype_attribute(registry, model):

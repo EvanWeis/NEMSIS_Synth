@@ -14,6 +14,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from dataclasses import field as dc_field
+from datetime import UTC, datetime
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
@@ -21,10 +22,12 @@ from typing import Any
 import yaml
 
 from .api_client import ApiClient, extract_json_block
+from .applicability import apply_not_applicable
 from .profiles import Profile, ProfileConfig, load_system_base, narrative_instruction_text
 from .render import render_dataset, value_tree_from_document
 from .scenario import Scenario
 from .schema_model import Node, SchemaModel, load_model
+from .timeline import build_timeline
 from .valuesets import Registry
 
 FIELDPLAN_PATH = Path(__file__).resolve().parent / "prompts" / "fieldplan.yaml"
@@ -49,6 +52,7 @@ class FieldPlan:
     repeating_singletons: dict[str, str]
     literals: dict[str, str]
     groups: dict[str, dict]
+    timestamps: dict[str, Any]
 
     def coded_fields(self) -> list[str]:
         fields = list(self.singletons) + list(self.repeating_singletons)
@@ -65,6 +69,7 @@ def load_fieldplan(path: Path = FIELDPLAN_PATH) -> FieldPlan:
         repeating_singletons=data.get("repeating_singletons") or {},
         literals=data.get("literals") or {},
         groups=data.get("groups") or {},
+        timestamps=data.get("timestamps") or {},
     )
 
 
@@ -143,19 +148,52 @@ Return this JSON shape between the markers:
   "type_of_destination": "...",
   "level_of_care_provided": "...",
   "vitals": [
-    {"sbp": "138", "heart_rate": "104", "spo2": "89", "respiratory_rate": "28",
-     "pain_score": "0", "responsiveness": "alert"}
+    {"minute": 12, "sbp": "138", "heart_rate": "104", "spo2": "89",
+     "respiratory_rate": "28", "pain_score": "0", "responsiveness": "alert"}
   ],
   "medications": [
-    {"medication": "albuterol", "dosage": "2.5", "dosage_units": "milligrams",
-     "route": "nebulized inhalation", "response": "improved"}
-  ],
-  "procedures": [
-    {"procedure": "IV access", "attempts": "1", "successful": "yes",
+    {"minute": 15, "medication": "albuterol", "dosage": "2.5",
+     "dosage_units": "milligrams", "route": "nebulized inhalation",
      "response": "improved"}
   ],
-  "narrative": "..."
+  "procedures": [
+    {"minute": 14, "procedure": "IV access", "attempts": "1",
+     "successful": "yes", "response": "improved"}
+  ],
+  "narrative": "...",
+  "is_injury": false,
+  "cause_of_injury": "not applicable - medical call",
+  "trauma_triage_high_risk": ["none reported"],
+  "trauma_triage_moderate_risk": ["none reported"],
+  "is_cardiac_arrest": false,
+  "possible_injury": "no",
+  "cardiac_arrest": "no",
+  "barriers_to_patient_care": "none reported",
+  "transport_mode_from_scene": "...",
+  "emergency_department_disposition": "...",
+  "reason_for_choosing_destination": ["..."],
+  "hospital_capability": ["..."],
+  "race": ["..."],
+  "age_units": "years",
+  "gcs_eye": "spontaneous",
+  "gcs_verbal": "oriented",
+  "gcs_motor": "obeys commands",
+  "protocols": [{"protocol": "..."}],
+  "incident_start": "2026-03-14T02:10:00",
+  "timeline_offsets": {
+    "psap_call": 0, "dispatch_notified": 1, "unit_notified": 2, "en_route": 3,
+    "arrived_on_scene": 9, "arrived_at_patient": 11, "left_scene": 26,
+    "arrived_at_destination": 38, "transfer_of_care": 45, "back_in_service": 58
+  }
 }
+
+`is_injury` and `is_cardiac_arrest` decide whether the eInjury and eArrest sections
+apply at all - set them honestly, because a section that does not apply is marked
+Not Applicable rather than filled with plausible-looking values.
+
+All times are relative offsets in MINUTES from the PSAP call. Do not write absolute
+timestamps anywhere; the caller derives them. Give each vitals set, medication and
+procedure a `minute` field on the same scale.
 
 Give at least two sets of vitals. Include only medications and procedures that
 were actually performed in this scenario.
@@ -192,13 +230,33 @@ class GenerationResult:
     clinical: dict
     codes: dict
     unknown_codes: list[str] = dc_field(default_factory=list)
+    off_defined_list: list[str] = dc_field(default_factory=list)
     render_report: Any = None
+    not_applicable: list[str] = dc_field(default_factory=list)
+    timeline: dict = dc_field(default_factory=dict)
 
 
-def _record_selection(registry: Registry, field: str, code: str, unknown: list[str]) -> None:
-    """Never trust a selection blindly - a code off the table is recorded."""
+def _record_selection(
+    registry: Registry,
+    field: str,
+    code: str,
+    unknown: list[str],
+    off_list: list[str],
+) -> None:
+    """Never trust a selection blindly - a code off the table is recorded.
+
+    A defined-list field is a softer case: its XSD type admits any code from the
+    external vocabulary, so a pick outside the curated list is an advisory, not an
+    illegal value. Conflating the two would make `unknown_codes` useless as a
+    signal that something actually went wrong.
+    """
     values = registry.values_for(field)
-    if values and not any(v.code == code for v in values):
+    if not values or any(v.code == code for v in values):
+        return
+    definition = registry.fields.get(field)
+    if definition is not None and definition.defined_list is not None:
+        off_list.append(f"{field}={code}")
+    else:
         unknown.append(f"{field}={code}")
 
 
@@ -238,15 +296,19 @@ def apply_selections(
     plan: FieldPlan,
     model: SchemaModel,
     registry: Registry,
-) -> list[str]:
-    """Overlay stage A literals and stage B codes onto the template value tree."""
+) -> tuple[list[str], list[str]]:
+    """Overlay stage A literals and stage B codes onto the template value tree.
+
+    Returns (illegal codes, codes outside a defined list).
+    """
     unknown: list[str] = []
+    off_list: list[str] = []
 
     for field, code in (codes.get("singletons") or {}).items():
         path = find_path(model, field)
         if not path or not code:
             continue
-        _record_selection(registry, field, code, unknown)
+        _record_selection(registry, field, code, unknown, off_list)
         _place(sections, path, _leaf_value(registry, field, code))
 
     for field, values in (codes.get("repeating_singletons") or {}).items():
@@ -254,7 +316,7 @@ def apply_selections(
         if not path or not values:
             continue
         for code in values:
-            _record_selection(registry, field, code, unknown)
+            _record_selection(registry, field, code, unknown, off_list)
         _place(sections, path, [_leaf_value(registry, field, c) for c in values])
 
     for field, key in plan.literals.items():
@@ -282,7 +344,7 @@ def apply_selections(
             for field, code in chosen.items():
                 if not code:
                     continue
-                _record_selection(registry, field, code, unknown)
+                _record_selection(registry, field, code, unknown, off_list)
                 _place(
                     entry,
                     _relative_path(model, field, group_path),
@@ -297,7 +359,56 @@ def apply_selections(
 
         _place(sections, group_path, rendered)
 
-    return unknown
+    return unknown, off_list
+
+
+def apply_timeline(
+    sections: dict,
+    clinical: dict,
+    plan: FieldPlan,
+    model: SchemaModel,
+) -> dict:
+    """Derive every timestamp in the record from the model's relative offsets."""
+    raw_start = str(clinical.get("incident_start") or "").strip()
+    try:
+        start = datetime.fromisoformat(raw_start)
+    except ValueError:
+        start = datetime.now(UTC).replace(tzinfo=None)
+    if start.tzinfo is None:
+        start = start.replace(tzinfo=UTC)
+
+    timeline = build_timeline(start, clinical.get("timeline_offsets"))
+
+    for field, value in timeline.field_values().items():
+        path = find_path(model, field)
+        if path:
+            _place(sections, path, value)
+
+    # Interventions are stamped inside the incident window, in the order given.
+    for group_name, time_field in (plan.timestamps.get("interventions") or {}).items():
+        group_path = find_path(model, group_name)
+        if not group_path:
+            continue
+        cursor: Any = sections
+        for name in group_path:
+            cursor = cursor.get(name, {}) if isinstance(cursor, dict) else {}
+        if not isinstance(cursor, list):
+            continue
+        source = clinical.get(_intent_for(plan, group_name)) or []
+        relative = _relative_path(model, time_field, group_path)
+        for index, entry in enumerate(cursor):
+            minute = source[index].get("minute") if index < len(source) else None
+            try:
+                minute = float(minute)
+            except (TypeError, ValueError):
+                minute = timeline.offsets["arrived_at_patient"] + index
+            _place(entry, relative, timeline.at_minute(minute))
+
+    return {"start": timeline.at("psap_call"), "offsets": timeline.offsets}
+
+
+def _intent_for(plan: FieldPlan, group_name: str) -> str:
+    return (plan.groups.get(group_name) or {}).get("intent", "")
 
 
 def build_cached_system(registry: Registry, plan: FieldPlan | None = None) -> str:
@@ -354,7 +465,10 @@ def generate_record(
     codes = json.loads(extract_json_block(stage_b_raw))
 
     sections, demographic, _uuid = value_tree_from_document(template.read_bytes(), model=model)
-    unknown = apply_selections(sections, clinical, codes, plan, model, registry)
+    unknown, off_list = apply_selections(sections, clinical, codes, plan, model, registry)
+    timeline = apply_timeline(sections, clinical, plan, model)
+    # Last, so a nilled section overwrites anything the earlier passes placed in it.
+    not_applicable = apply_not_applicable(sections, clinical, model, registry)
     xml, report = render_dataset(sections, demographic, model=model)
 
     return GenerationResult(
@@ -362,5 +476,8 @@ def generate_record(
         clinical=clinical,
         codes=codes,
         unknown_codes=unknown,
+        off_defined_list=off_list,
         render_report=report,
+        not_applicable=not_applicable,
+        timeline=timeline,
     )

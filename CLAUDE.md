@@ -21,9 +21,26 @@ Verified live against `claude-opus-5`: all seven profiles generated and each mat
 its expected validation outcome. Prompt caching confirmed working (85k cache reads,
 zero re-creation on the second run of a session).
 
-Not yet done: `--concurrency`, the Schematron gate, and widening the field plan
-(sections outside it are inherited from the template, so e.g. `eInjury.01` still
-carries the template's cause-of-injury code on a medical call).
+The downstream QA tool checks protocol compliance, medical necessity, cross-field
+consistency, and GAMUT / NEMSQA / internal agency quality measures. Two generator
+behaviours exist specifically so its checks fire on the record rather than on our
+artefacts:
+
+- **Timestamps are derived in code** (`nemsis_gen/timeline.py`). The model supplies
+  relative offsets in minutes; the eTimes sequence is made monotonic by construction
+  and every vital sign, medication and procedure is clamped inside the incident
+  window. Offsets that arrive out of order are clamped forward, so a sloppy response
+  degrades to a tight timeline rather than an invalid one.
+- **Sections that do not apply are nilled**, not inherited (`applicability.py`).
+  A medical call gets `<eInjury.01 xsi:nil="true" NV="7701001"/>` rather than the
+  template's cause-of-injury code. Driven by `is_injury` / `is_cardiac_arrest` from
+  the clinical stage.
+
+`unknown_codes` (illegal) and `off_defined_list` (outside a curated list, but legal
+for the field's XSD type) are recorded separately — conflating them makes
+`unknown_codes` useless as a signal that something actually went wrong.
+
+Not yet done: `--concurrency` and the Schematron gate.
 
 ## Suggested project layout
 

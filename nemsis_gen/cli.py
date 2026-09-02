@@ -238,6 +238,9 @@ def generate_cmd(
             data = result.xml
             row["unknown_codes"] = result.unknown_codes
             row["render_report"] = result.render_report.to_json()
+            row["off_defined_list"] = result.off_defined_list
+            row["not_applicable"] = result.not_applicable
+            row["timeline"] = result.timeline
             row["narrative"] = result.clinical.get("narrative", "")
         else:
             row["shots"] = shots

@@ -13,6 +13,8 @@ Value tree shape mirrors the schema tree::
 
 A leaf value is a string, a list of strings (for repeating leaves), or a dict
 ``{"value": "435", "attrs": {"CodeType": "9924003"}}`` when attributes are needed.
+Add ``"nil": True`` for a NEMSIS null flavour - ``<eInjury.01 xsi:nil="true"
+NV="7701001"/>`` - which is how a section that does not apply is expressed.
 """
 
 from __future__ import annotations
@@ -52,12 +54,11 @@ def _qname(name: str) -> str:
     return f"{{{NEMSIS_NS}}}{name}"
 
 
-def _split(value: Any) -> tuple[str, dict[str, str]]:
+def _split(value: Any) -> tuple[str, dict[str, str], bool]:
     if isinstance(value, dict):
-        return str(value.get("value", "")), {
-            k: str(v) for k, v in (value.get("attrs") or {}).items()
-        }
-    return ("" if value is None else str(value)), {}
+        attrs = {k: str(v) for k, v in (value.get("attrs") or {}).items()}
+        return str(value.get("value", "")), attrs, bool(value.get("nil"))
+    return ("" if value is None else str(value)), {}, False
 
 
 def _render_node(node: Node, value: Any, parent: etree._Element, report: RenderReport) -> None:
@@ -71,10 +72,12 @@ def _render_node(node: Node, value: Any, parent: etree._Element, report: RenderR
             element = etree.SubElement(parent, _qname(node.name))
             _render_children(node, occurrence, element, report)
         else:
-            text, attrs = _split(occurrence)
+            text, attrs, nil = _split(occurrence)
             element = etree.SubElement(parent, _qname(node.name))
             if text:
                 element.text = text
+            if nil:
+                element.set(f"{{{XSI_NS}}}nil", "true")
             for key, attr_value in attrs.items():
                 element.set(key, attr_value)
 
@@ -137,7 +140,10 @@ def extract_value_tree(root: etree._Element, node: Node) -> Any:
     if not node.is_group:
         text = (root.text or "").strip()
         attrs = {k: v for k, v in root.attrib.items()}
-        return {"value": text, "attrs": attrs} if attrs else text
+        nil = attrs.pop(f"{{{XSI_NS}}}nil", None) == "true"
+        if attrs or nil:
+            return {"value": text, "attrs": attrs, "nil": nil}
+        return text
 
     out: dict[str, Any] = {}
     for child_node in node.children:

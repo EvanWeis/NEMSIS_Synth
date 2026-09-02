@@ -7,6 +7,16 @@
 
 singletons:
   eDispatch.01: dispatch_reason
+  eSituation.02: possible_injury
+  eInjury.01: cause_of_injury
+  eArrest.01: cardiac_arrest
+  eHistory.01: barriers_to_patient_care
+  eDisposition.17: transport_mode_from_scene
+  eOutcome.01: emergency_department_disposition
+  ePatient.16: age_units
+  eVitals.19: gcs_eye
+  eVitals.20: gcs_verbal
+  eVitals.21: gcs_motor
   eResponse.05: type_of_service_requested
   eResponse.07: unit_transport_capability
   eScene.09: incident_location_type
@@ -25,6 +35,11 @@ singletons:
 repeating_singletons:
   eSituation.10: other_associated_symptoms
   eSituation.12: secondary_impressions
+  ePatient.14: race
+  eDisposition.20: reason_for_choosing_destination
+  eDisposition.23: hospital_capability
+  eInjury.03: trauma_triage_high_risk
+  eInjury.04: trauma_triage_moderate_risk
 
 # Free-text or numeric leaves taken straight from the clinical intermediate.
 literals:
@@ -56,6 +71,11 @@ groups:
     literal:
       eMedications.05: dosage
 
+  eProtocols.ProtocolGroup:
+    intent: protocols
+    coded:
+      eProtocols.01: protocol
+
   eProcedures.ProcedureGroup:
     intent: procedures
     coded:
@@ -64,3 +84,22 @@ groups:
       eProcedures.08: response
     literal:
       eProcedures.05: attempts
+
+# Filled by code, never by the model. Timestamps are derived from the incident
+# start plus the model's relative offsets in minutes (see nemsis_gen/timeline.py),
+# so the eTimes sequence is monotonic by construction and every intervention falls
+# inside the incident window. Cross-field consistency checks read these hard, and
+# a model asked for absolute ISO timestamps does not reliably keep them ordered.
+timestamps:
+  stages: [eTimes.01, eTimes.02, eTimes.03, eTimes.05, eTimes.06, eTimes.07,
+           eTimes.09, eTimes.11, eTimes.12, eTimes.13]
+  interventions:
+    eVitals.VitalGroup: eVitals.01
+    eMedications.MedicationGroup: eMedications.01
+    eProcedures.ProcedureGroup: eProcedures.01
+
+# Sections nilled with NV="7701001" (Not Applicable) unless the clinical account
+# says otherwise - see nemsis_gen/applicability.py.
+conditional_sections:
+  eInjury: is_injury
+  eArrest: is_cardiac_arrest
