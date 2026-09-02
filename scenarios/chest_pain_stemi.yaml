@@ -1,0 +1,25 @@
+name: chest_pain_stemi
+patient: {age: 58, sex: female, history: [hyperlipidemia, type 2 diabetes], acuity: ALS}
+scene:
+  location: workplace office building, third floor
+  time_of_day: "14:35"
+  conditions: patient found seated in chair, diaphoretic, clutching chest
+  disposition: transported ALS emergent to PCI-capable center
+assessment:
+  presentation: crushing substernal chest pressure radiating to left jaw, onset 30 min prior
+  skin: pale, cool, diaphoretic
+  initial_vitals: {sbp: 96, heart_rate: 58, spo2: 93, respiratory_rate: 22}
+  after_treatment: {sbp: 108, heart_rate: 64, spo2: 97, respiratory_rate: 18}
+  ecg: 12-lead shows ST elevation in II, III, aVF
+  mental_status: alert, oriented x4, anxious
+interventions:
+  - 12-lead ECG with STEMI alert transmitted to receiving facility
+  - aspirin 324 mg chewed
+  - IV access bilateral 18g
+  - oxygen 4 LPM nasal cannula
+  - continuous cardiac monitoring
+narrative_outline: >
+  Inferior STEMI identified on scene. Hospital pre-alert activated. Patient
+  hypotensive and bradycardic; nitroglycerin withheld for inferior involvement.
+  Continuous monitoring and IV access required throughout; private vehicle
+  transport would have been unsafe given arrhythmia risk.

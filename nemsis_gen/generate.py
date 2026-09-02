@@ -21,7 +21,7 @@ from typing import Any
 import yaml
 
 from .api_client import ApiClient, extract_json_block
-from .profiles import Profile, ProfileConfig, load_system_base
+from .profiles import Profile, ProfileConfig, load_system_base, narrative_instruction_text
 from .render import render_dataset, value_tree_from_document
 from .scenario import Scenario
 from .schema_model import Node, SchemaModel, load_model
@@ -186,19 +186,6 @@ same order, as the corresponding lists in the clinical account.
 """
 
 
-def narrative_instruction(profile: Profile, config: ProfileConfig) -> str:
-    return (
-        f"## Quality profile: {profile.name}\n\n"
-        f"{profile.description}\n\n"
-        f"### Narrative quality target: {profile.narrative_quality} of 5\n\n"
-        f"{config.rubric_for(profile.narrative_quality)}\n\n"
-        "The narrative must land at exactly this level. Every other part of the "
-        "record stays clinically coherent and schema-valid regardless of the "
-        "narrative target - documentation quality is the only variable this dial "
-        "controls."
-    )
-
-
 @dataclass
 class GenerationResult:
     xml: bytes
@@ -338,7 +325,7 @@ def generate_record(
     plan = load_fieldplan()
 
     cached_system = build_cached_system(registry, plan)
-    profile_block = narrative_instruction(profile, config)
+    profile_block = narrative_instruction_text(profile, config)
 
     stage_a_raw = client.complete(
         cached_system,

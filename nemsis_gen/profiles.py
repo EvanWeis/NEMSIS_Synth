@@ -70,3 +70,21 @@ def load_profiles(path: Path = PROFILES_PATH) -> ProfileConfig:
 
 def load_system_base(path: Path = SYSTEM_BASE_PATH) -> str:
     return path.read_text(encoding="utf-8")
+
+
+def narrative_instruction_text(profile: Profile, config: ProfileConfig) -> str:
+    """The per-profile system block: which rubric level this record must hit."""
+    return "\n\n".join(
+        [
+            f"## Quality profile: {profile.name}",
+            profile.description,
+            f"### Narrative quality target: {profile.narrative_quality} of 5",
+            config.rubric_for(profile.narrative_quality),
+            (
+                "The narrative must land at exactly this level. Every other part of "
+                "the record stays clinically coherent and schema-valid regardless of "
+                "the narrative target - documentation quality is the only variable "
+                "this dial controls."
+            ),
+        ]
+    )

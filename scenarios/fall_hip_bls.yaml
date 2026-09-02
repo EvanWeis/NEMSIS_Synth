@@ -1,0 +1,22 @@
+name: fall_hip_bls
+patient: {age: 81, sex: male, history: [osteoporosis, atrial fibrillation on apixaban], acuity: BLS}
+scene:
+  location: skilled nursing facility hallway
+  time_of_day: "09:20"
+  conditions: unwitnessed fall, patient found on floor by staff
+  disposition: transported BLS to emergency department
+assessment:
+  presentation: right hip pain, leg shortened and externally rotated, unable to bear weight
+  initial_vitals: {sbp: 148, heart_rate: 88, spo2: 96, respiratory_rate: 18}
+  after_treatment: {sbp: 142, heart_rate: 84, spo2: 97, respiratory_rate: 16}
+  mental_status: alert, oriented x3, at baseline per staff
+  pain: 8 of 10 at rest, worse with any movement
+interventions:
+  - full spinal precautions deferred per protocol assessment
+  - vacuum splint to right lower extremity
+  - padding and repositioning for comfort
+  - serial vital signs
+narrative_outline: >
+  Suspected hip fracture with anticoagulation risk. Patient could not be moved
+  without splinting and could bear no weight; stretcher transport with
+  immobilization was the only safe option.

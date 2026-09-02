@@ -125,7 +125,27 @@ carries the template's cause-of-injury code on a medical call).
                                                       - `/SampleData/EMS/xml/` — official sample PCR instances (`ElementsRepeat`, `Nils`, `NoRepeat`, `PNs` series — ten of each, useful as additional structural fixtures beyond the one already pulled)
                                                         - Packaged schema zip, no git browsing needed: `https://nemsis.org/media/nemsis_v3/release-3.5.0/XSDs/NEMSIS_XSDs.zip`
 
-                                                        ## Claude API call pattern
+                                                        ## Architecture: why two stages
+
+Tested against the alternative rather than asserted. `nemsis_gen/direct.py` implements
+single-call generation (the model writes the XML itself) in zero-shot and few-shot
+variants, and `scripts/eval_arms.py` runs it head to head on held-out scenarios.
+
+Result on Sonnet 5, 4 records per arm:
+
+| arm | valid | element-order errors | code errors | output size |
+|---|---|---|---|---|
+| `two_stage` | 4/4 | 0 | 0 | ~36 KB |
+| `direct_zero` | 0/4 | 11-14 per record | 5-14 per record | ~8 KB |
+
+Direct generation does not just misorder elements - it invents element names that are
+not in the schema (`dDemographicGroup.01`) and silently truncates the document to a
+fifth of its proper size. Few-shot exemplars were not run to completion; the zero-shot
+gap was already decisive and the arm costs more per record than two-stage.
+
+Keep `direct.py` for regression checks against future models, not for production use.
+
+## Claude API call pattern
 
 Two calls per record, not one — the split is the design, not an optimisation:
 
@@ -139,8 +159,8 @@ never emits XML, so element-ordering and namespace errors cannot happen by
 accident — only deliberately, via `mutate.py`. And it never recalls a code from
 memory, which is the failure mode that yields plausible, wrong, hard-to-spot data.
 
-- **Model choice (measured, not assumed).** `claude-sonnet-5` is the floor for
-  production use: it holds the rubric gradation apart and keeps value sets straight,
+- **Default model is `claude-sonnet-5`** (`api_client.DEFAULT_MODEL`), overridable
+  with `--model`. Measured, not assumed: it holds the rubric gradation apart and keeps value sets straight,
   at roughly half the cost of Opus. `claude-haiku-4-5` cross-contaminated value sets
   (put an `eSituation.13` Initial Acuity code into `eDisposition.19` Final Acuity) and
   flattened initial/final acuity to the same value — the post-hoc registry check

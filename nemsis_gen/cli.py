@@ -6,7 +6,6 @@ import json
 from pathlib import Path
 
 import click
-from dotenv import load_dotenv
 
 from .api_client import DEFAULT_MODEL, ApiClient, OutputContractError
 from .generate import DEFAULT_TEMPLATE, build_cached_system, generate_record
@@ -22,10 +21,6 @@ from .valuesets import (
     load_registry,
     write_registry,
 )
-
-# .env.local first so a local key overrides a checked-in default.
-for _env_file in (".env.local", ".env"):
-    load_dotenv(_env_file, override=False)
 
 
 @click.group()
@@ -143,6 +138,21 @@ def profiles_cmd() -> None:
 @click.option("--manifest", "manifest_path", type=click.Path(path_type=Path), default=None)
 @click.option("--validate/--no-validate", default=True, show_default=True)
 @click.option("--seed", type=int, default=None, help="Seed for mutation choices.")
+@click.option(
+    "--mode",
+    type=click.Choice(["two_stage", "direct"]),
+    default="two_stage",
+    show_default=True,
+    help="two_stage: model picks values, renderer builds the XML (recommended). "
+    "direct: model writes the XML itself - measurably worse, kept for comparison.",
+)
+@click.option(
+    "--shots",
+    type=int,
+    default=0,
+    show_default=True,
+    help="direct mode only: number of worked (profile, XML) exemplars to include.",
+)
 @click.option("--dry-run", is_flag=True, help="Estimate prompt size and cost, make no API calls.")
 def generate_cmd(
     profile_name: str,
@@ -156,6 +166,8 @@ def generate_cmd(
     manifest_path: Path | None,
     validate: bool,
     seed: int | None,
+    mode: str,
+    shots: int,
     dry_run: bool,
 ) -> None:
     """Generate N synthetic PCRs for one quality profile."""
@@ -221,10 +233,14 @@ def generate_cmd(
             click.echo(f"FAIL  {name}  {type(exc).__name__}: {exc}")
             continue
 
-        data = result.xml
-        row["unknown_codes"] = result.unknown_codes
-        row["render_report"] = result.render_report.to_json()
-        row["narrative"] = result.clinical.get("narrative", "")
+        row["mode"] = mode
+        if result is not None:
+            data = result.xml
+            row["unknown_codes"] = result.unknown_codes
+            row["render_report"] = result.render_report.to_json()
+            row["narrative"] = result.clinical.get("narrative", "")
+        else:
+            row["shots"] = shots
 
         if profile.mutation is not None:
             data, description = apply_mutation(

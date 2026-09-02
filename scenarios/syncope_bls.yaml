@@ -1,0 +1,22 @@
+name: syncope_bls
+patient: {age: 72, sex: female, history: [hypertension, prior TIA], acuity: BLS}
+scene:
+  location: grocery store, produce aisle
+  time_of_day: "11:05"
+  conditions: witnessed syncopal episode, bystander CPR not indicated, patient conscious on arrival
+  disposition: transported BLS to emergency department
+assessment:
+  presentation: brief loss of consciousness lasting under 30 seconds, now alert with residual dizziness
+  initial_vitals: {sbp: 104, heart_rate: 56, spo2: 97, respiratory_rate: 16}
+  after_treatment: {sbp: 118, heart_rate: 62, spo2: 98, respiratory_rate: 16}
+  mental_status: alert, oriented x4, no focal deficit
+  skin: pale, diaphoretic initially, improving
+interventions:
+  - supine positioning with legs elevated
+  - blood glucose check, 94 mg/dL
+  - 12-lead ECG obtained, sinus bradycardia
+  - serial vital signs
+narrative_outline: >
+  Syncope of unclear cause in an elderly patient with prior TIA. Orthostatic
+  symptoms persisted on standing attempt, and unmonitored transport was unsafe
+  given the possibility of recurrent syncope.

@@ -9,8 +9,16 @@ from dataclasses import dataclass
 from dataclasses import field as dc_field
 
 import anthropic
+from dotenv import load_dotenv
 
-DEFAULT_MODEL = "claude-opus-5"
+# Loaded here rather than in the CLI so every entry point (CLI, eval scripts,
+# tests) resolves credentials the same way. .env.local wins over .env.
+for _env_file in (".env.local", ".env"):
+    load_dotenv(_env_file, override=False)
+
+# Sonnet 5 is the measured default: it matched Opus on validity and rubric
+# gradation at roughly half the cost. Override per run with --model.
+DEFAULT_MODEL = "claude-sonnet-5"
 MARKER_OPEN = "<json>"
 MARKER_CLOSE = "</json>"
 
