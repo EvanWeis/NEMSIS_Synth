@@ -8,8 +8,9 @@ Phase 0 and Phase 1 are done. On disk and working:
 
 - `reference/xsd/` — all 28 EMS component XSDs, pinned to NEMSIS tag `3.5.0.230317CP4` (`VERSION.txt`).
 - `reference/samples/ems_xml/` — the 40 official EMS sample PCRs at the *same* tag. All 40 pass every gate.
-- `reference/valuesets.json` — 467 field definitions and 214 code tables (2350 codes) derived from the XSDs by `nemsis_gen/valuesets.py`.
-- `nemsis_gen/validate.py` — three independent gates: well-formedness, XSD, value-set legality.
+- `reference/valuesets.json` — 467 field definitions, 214 XSD code tables and 6 Defined Lists (2834 codes total), built by `nemsis_gen/valuesets.py`.
+- `reference/definedlists/` — the NEMSIS Defined List JSON exports (ICD-10, RxNorm, SNOMED), pinned to the same tag.
+- `nemsis_gen/validate.py` — three independent gates (well-formedness, XSD, value-set legality) plus defined-list advisories.
 - `nemsis_gen/cli.py` — `valuesets build|show` and `validate`.
 
 Next: the two-stage generator (clinical intermediate -> code selection -> code-side XML rendering),
@@ -99,7 +100,11 @@ the graduated 1-5 narrative-quality rubric, and the profile mutations.
 
   Correction to earlier notes in this file: the codes in the official sample data are **real production value-set codes**, not placeholders — all 10,191 coded values across the 40 sample PCRs verify against the derived tables (`tests/test_reference_baseline.py`). The synthetic-looking values in those files are the free-text and identifier fields (`eResponse.03` = `Ekx`), not the enumerations. `code_value_violations` is therefore not blocked on anything.
 
-  Three fields point at *external* terminologies with no enumeration in the XSD and so cannot be reverse-looked-up from the registry: `eSituation.09`/`.10`/`.11`/`.12` (ICD-10), `eMedications.03` (RxNorm), `eProcedures.03` (SNOMED). These need either an external table or model-generated codes flagged as unverified in the manifest.
+  Fields drawing on *external* clinical vocabularies are covered by the NEMSIS **Defined Lists**, not the XSDs: `/DefinedLists/` in the same repo publishes them as JSON/CSV/XLSX, and each file self-describes which elements it governs, so `load_defined_lists()` wires them in without a hardcoded field map. Fetched into `reference/definedlists/`: Impression (ICD-10 -> `eSituation.11`/`.12`, 122 codes), Medication (RxNorm/SNOMED -> `eMedications.03`, 69), Procedure (SNOMED -> `eProcedures.03`, 114), Symptom (`eSituation.09`/`.10`), CauseOfInjury (`eInjury.01`), IncidentLocationType (`eScene.09`). Small enough to inject wholesale into a prompt.
+
+  A defined list is a **curated subset, not a closed enumeration** — the XSD types for these fields admit any well-formed code from the underlying vocabulary, and the official sample corpus sits outside the lists most of the time (e.g. 31/47 `eProcedures.03` values). So membership is reported as an advisory (`defined_list_warnings`), never as a validation failure. The generator should still select from the list; the advisory is how you detect when it didn't.
+
+  `eMedications.03` also carries a required `CodeType` attribute (`9924003` RxNorm, `9924005` SNOMED-CT) that the renderer must emit alongside the code.
 
 - `eNarrative.01` is the free-text narrative field. It's the field the `valid_weak_narrative` profile manipulates: the rest of the record (vitals, exam findings, interventions in `eMedications`/`eProcedures`) stays schema-valid and clinically coherent for the level of care billed, but the narrative itself never establishes medical necessity for ambulance transport under CMS standards (42 CFR 410.40 / Medicare Benefit Policy Manual Ch. 10) — no statement that transport by other means was unsafe, patient described as ambulatory/low-acuity throughout, interventions never tied back to a stated clinical reason. Use this same lever for any other "documentation quality" tier that gets added later.
 

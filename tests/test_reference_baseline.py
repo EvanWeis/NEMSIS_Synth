@@ -16,6 +16,28 @@ def test_sample_corpus_present(sample_files):
     assert len(sample_files) == EXPECTED_SAMPLE_COUNT
 
 
+def test_defined_lists_wired_to_their_elements(registry):
+    """The Defined List JSON names its own elements, so this is the wiring check."""
+    assert registry.fields["eSituation.11"].defined_list == "Impression"
+    assert registry.fields["eMedications.03"].defined_list == "Medication"
+    assert registry.fields["eProcedures.03"].defined_list == "Procedure"
+    assert "ICD-10" in registry.defined_lists["Impression"].source_vocabularies
+    assert "RxNorm" in registry.defined_lists["Medication"].source_vocabularies
+    assert any(v.label == "Acetaminophen (Tylenol)" for v in registry.values_for("eMedications.03"))
+
+
+def test_defined_list_membership_is_advisory_not_a_gate(sample_files, registry):
+    """The official corpus itself uses codes outside the curated lists; those must
+    surface as advisories, never as validation failures."""
+    from lxml import etree
+
+    total = 0
+    for path in sample_files:
+        _errors, advisories = check_codes(etree.parse(str(path)).getroot(), registry)
+        total += len(advisories)
+    assert total > 0, "expected the corpus to range outside the defined lists"
+
+
 def test_registry_extracted_from_xsds(registry):
     # Sanity floor, not an exact count - upstream adds codes between patch releases.
     assert len(registry.fields) > 400
@@ -45,5 +67,6 @@ def test_every_code_in_the_corpus_is_in_the_derived_value_sets(sample_files, reg
                 continue
             if registry.values_for(el.tag.replace(prefix, "")):
                 checked += 1
-        assert not check_codes(root, registry), path.name
+        hard_errors, _advisories = check_codes(root, registry)
+        assert not hard_errors, path.name
     assert checked > 5000, "corpus scan covered suspiciously few enumerated elements"

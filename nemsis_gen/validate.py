@@ -5,7 +5,15 @@ gate a record failed:
 
 1. well-formedness  - can it be parsed at all
 2. XSD structural   - does it satisfy EMSDataSet_v3.xsd and its 27 includes
-3. code value sets  - is every enumerated leaf a legal national code
+3. code value sets  - is every XSD-enumerated leaf a legal national code
+
+Plus one advisory signal that is deliberately *not* a gate: defined-list
+membership. Fields like eProcedures.03 and eSituation.11 draw on external
+vocabularies (SNOMED, ICD-10) whose XSD types accept any well-formed code, and
+NEMSIS's published Defined Lists are a curated subset rather than a closed
+enumeration - the official sample corpus itself sits outside them most of the
+time. So a code off the list is worth reporting (the generator should be
+selecting from the list) but is not invalid.
 
 The Schematron business-rule layer shipped with the sample package is a fourth,
 stricter gate; see ``schematron_validate``.
@@ -33,6 +41,7 @@ class ValidationResult:
     code_valid: bool | None
     errors: list[str] = dc_field(default_factory=list)
     code_errors: list[str] = dc_field(default_factory=list)
+    defined_list_warnings: list[str] = dc_field(default_factory=list)
 
     @property
     def ok(self) -> bool:
@@ -45,6 +54,7 @@ class ValidationResult:
             "code_valid": self.code_valid,
             "errors": self.errors,
             "code_errors": self.code_errors,
+            "defined_list_warnings": self.defined_list_warnings,
         }
 
 
@@ -54,24 +64,35 @@ def load_schema(schema_path: Path = DEFAULT_SCHEMA) -> etree.XMLSchema:
     return etree.XMLSchema(etree.parse(str(schema_path)))
 
 
-def check_codes(root: etree._Element, registry: Registry) -> list[str]:
-    """Flag enumerated leaves carrying a value outside their national value set."""
+def check_codes(root: etree._Element, registry: Registry) -> tuple[list[str], list[str]]:
+    """Check coded leaves. Returns (hard errors, defined-list advisories)."""
     errors: list[str] = []
+    warnings: list[str] = []
     prefix = f"{{{NEMSIS_NS}}}"
     for el in root.iter():
         if not isinstance(el.tag, str):
             continue
         number = el.tag.replace(prefix, "")
-        values = registry.values_for(number)
-        if not values:
+        field = registry.fields.get(number)
+        if field is None:
             continue
         text = (el.text or "").strip()
         if not text:
             continue  # empty/nil is a structural question, not a value-set one
+
+        if field.defined_list is not None:
+            values = registry.values_for(number)
+            if values and not any(v.code == text for v in values):
+                warnings.append(
+                    f"{number}: '{text}' is outside the {field.defined_list} defined list"
+                )
+            continue
+
+        if field.type_name is None or not registry.types.get(field.type_name):
+            continue
         if not registry.is_legal(number, text):
-            type_name = registry.fields[number].type_name
-            errors.append(f"{number}: '{text}' is not in value set {type_name}")
-    return errors
+            errors.append(f"{number}: '{text}' is not in value set {field.type_name}")
+    return errors, warnings
 
 
 def validate_file(
@@ -97,7 +118,7 @@ def validate_bytes(
     errors = [f"line {e.line}: {e.message}" for e in schema.error_log]
 
     registry = registry or load_registry()
-    code_errors = check_codes(root, registry)
+    code_errors, warnings = check_codes(root, registry)
 
     return ValidationResult(
         well_formed=True,
@@ -105,6 +126,7 @@ def validate_bytes(
         code_valid=not code_errors,
         errors=errors,
         code_errors=code_errors,
+        defined_list_warnings=warnings,
     )
 
 

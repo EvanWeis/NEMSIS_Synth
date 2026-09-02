@@ -55,8 +55,15 @@ def valuesets_show(field: str) -> None:
     click.echo(f"{fd.number}  {fd.name}  [{fd.usage}]  type={fd.type_name}")
     if fd.definition:
         click.echo(f"  {fd.definition}")
+    if fd.defined_list:
+        dl = registry.defined_lists[fd.defined_list]
+        click.echo(
+            f"  defined list: {dl.name} ({', '.join(dl.source_vocabularies)}) - "
+            "a curated subset; the schema admits any valid code from the vocabulary"
+        )
     for value in registry.values_for(field):
-        click.echo(f"  {value.code}  {value.label}")
+        suffix = f"  [{value.category}]" if value.category else ""
+        click.echo(f"  {value.code}  {value.label}{suffix}")
 
 
 @cli.command("validate")
@@ -78,7 +85,12 @@ def validate_cmd(paths: tuple[Path, ...], schema: Path, as_json: bool) -> None:
             click.echo(json.dumps({"file": str(path), **result.to_json()}))
         else:
             status = "PASS" if result.ok else "FAIL"
-            click.echo(f"{status}  {path.name}")
+            warned = (
+                f"  ({len(result.defined_list_warnings)} defined-list advisories)"
+                if result.defined_list_warnings
+                else ""
+            )
+            click.echo(f"{status}  {path.name}{warned}")
             for msg in (result.errors + result.code_errors)[:5]:
                 click.echo(f"      {msg}")
 

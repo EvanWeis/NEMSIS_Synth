@@ -34,7 +34,6 @@ def test_illegal_code_passes_xsd_check_only_at_the_value_set_gate(sample_files, 
     """A code the XSD enumerates but of the wrong list fails XSD too; this asserts
     the value-set gate reports the specific offending field either way."""
     data = _sample_bytes(sample_files).decode("utf-8")
-    tampered = data.replace("<eDispatch.01>", "<eDispatch.01>", 1)
     original = data[data.index("<eDispatch.01>") : data.index("</eDispatch.01>")]
     code = original.split(">")[-1]
     tampered = data.replace(f"<eDispatch.01>{code}<", "<eDispatch.01>9999999<", 1)
