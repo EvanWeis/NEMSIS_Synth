@@ -27,7 +27,7 @@ class Profile:
     name: str
     description: str
     narrative_quality: int
-    temperature: float
+    effort: str
     mutation: Mutation | None
 
     @property
@@ -61,7 +61,7 @@ def load_profiles(path: Path = PROFILES_PATH) -> ProfileConfig:
             name=name,
             description=" ".join(raw["description"].split()),
             narrative_quality=int(raw["narrative_quality"]),
-            temperature=float(raw.get("temperature", 0.7)),
+            effort=str(raw.get("effort", "high")),
             mutation=Mutation(mutation["name"], mutation.get("params") or {}) if mutation else None,
         )
     rubric = {int(k): v for k, v in data["narrative_rubric"].items()}

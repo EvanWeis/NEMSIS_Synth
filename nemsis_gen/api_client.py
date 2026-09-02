@@ -15,6 +15,10 @@ MARKER_OPEN = "<json>"
 MARKER_CLOSE = "</json>"
 
 
+class RefusalError(RuntimeError):
+    """The model declined the request. Logged per record, never retried blindly."""
+
+
 class OutputContractError(RuntimeError):
     """The model returned something without the agreed markers.
 
@@ -56,23 +60,61 @@ class Usage:
 class ApiClient:
     model: str = DEFAULT_MODEL
     max_retries: int = 5
-    max_tokens: int = 8000
+    max_tokens: int = 16000
+    fallbacks: bool = True
     usage: Usage = dc_field(default_factory=Usage)
     _client: anthropic.Anthropic | None = None
 
     def __post_init__(self) -> None:
-        if not os.environ.get("ANTHROPIC_API_KEY"):
-            raise RuntimeError("ANTHROPIC_API_KEY is not set (put it in .env or the environment)")
-        self._client = anthropic.Anthropic()
+        # ANTHROPIC_KEY is accepted as an alias; the SDK only reads ANTHROPIC_API_KEY.
+        key = os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("ANTHROPIC_KEY")
+        if not key:
+            raise RuntimeError(
+                "no API key found - set ANTHROPIC_API_KEY (or ANTHROPIC_KEY) "
+                "in .env.local, .env, or the environment"
+            )
+        self._client = anthropic.Anthropic(api_key=key)
+
+    def _create(self, system: list, user_message: str, effort: str):
+        """Issue the request, with server-side refusal fallback when available.
+
+        The fallback beta is not enabled on every account, so a rejection of the
+        beta itself downgrades the client once and carries on unprotected rather
+        than failing the run.
+        """
+        common = {
+            "model": self.model,
+            "max_tokens": self.max_tokens,
+            "system": system,
+            "messages": [{"role": "user", "content": user_message}],
+            "output_config": {"effort": effort},
+        }
+        if self.fallbacks:
+            try:
+                return self._client.beta.messages.create(
+                    betas=["server-side-fallback-2026-07-01"],
+                    fallbacks="default",
+                    **common,
+                )
+            except anthropic.BadRequestError as exc:
+                if "fallback" not in str(exc).lower() and "beta" not in str(exc).lower():
+                    raise
+                self.fallbacks = False
+        return self._client.messages.create(**common)
 
     def complete(
         self,
         cached_system: str,
         system_suffix: str,
         user_message: str,
-        temperature: float = 0.7,
+        effort: str = "high",
     ) -> str:
-        """One call. ``cached_system`` is byte-identical across a run and cached."""
+        """One call. ``cached_system`` is byte-identical across a run and cached.
+
+        Depth is controlled by ``output_config.effort``, not temperature - the
+        sampling parameters were removed on Opus 5 and return a 400. Thinking is
+        on by default on this model, so it is left unset.
+        """
         system = [
             {
                 "type": "text",
@@ -85,14 +127,11 @@ class ApiClient:
         last_error: Exception | None = None
         for attempt in range(self.max_retries):
             try:
-                response = self._client.messages.create(
-                    model=self.model,
-                    max_tokens=self.max_tokens,
-                    temperature=temperature,
-                    system=system,
-                    messages=[{"role": "user", "content": user_message}],
-                )
+                response = self._create(system, user_message, effort)
                 self.usage.add(response.usage)
+                if response.stop_reason == "refusal":
+                    detail = getattr(response.stop_details, "category", None)
+                    raise RefusalError(f"model declined the request (category: {detail})")
                 return "".join(block.text for block in response.content if block.type == "text")
             except (
                 anthropic.RateLimitError,

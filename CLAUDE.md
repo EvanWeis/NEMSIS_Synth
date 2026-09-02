@@ -17,9 +17,13 @@ The pipeline runs end to end. On disk and working:
 - `nemsis_gen/validate.py` — three gates plus defined-list advisories.
 - `nemsis_gen/cli.py` — `generate`, `validate`, `profiles`, `valuesets build|show`.
 
-Not yet done: a live end-to-end run (no `ANTHROPIC_API_KEY` was available in the
-build session — every stage either side of the two model calls is tested offline),
-`--concurrency`, and the Schematron gate.
+Verified live against `claude-opus-5`: all seven profiles generated and each matched
+its expected validation outcome. Prompt caching confirmed working (85k cache reads,
+zero re-creation on the second run of a session).
+
+Not yet done: `--concurrency`, the Schematron gate, and widening the field plan
+(sections outside it are inherited from the template, so e.g. `eInjury.01` still
+carries the template's cause-of-injury code on a medical call).
 
 ## Suggested project layout
 
@@ -135,6 +139,14 @@ never emits XML, so element-ordering and namespace errors cannot happen by
 accident — only deliberately, via `mutate.py`. And it never recalls a code from
 memory, which is the failure mode that yields plausible, wrong, hard-to-spot data.
 
+- **No `temperature`.** The sampling parameters were removed on Opus 5 and return a
+  400. Depth is `output_config: {effort: ...}` instead — profiles set `effort: high`
+  for clinical content, and stage B always runs at `effort: low` because selection is
+  a lookup, not a creative act. Thinking is on by default on this model, so the
+  `thinking` parameter is left unset.
+- Server-side refusal fallback (`fallbacks: "default"`) is on by default; if the beta
+  is not enabled on the account the client downgrades once and carries on rather than
+  failing the run.
 - `system` is two blocks: the fixed base prompt concatenated with the ~10k-token
   code catalogue (`cache_control: ephemeral` — byte-identical across a whole run,
   so it is paid for roughly once), then the per-profile narrative block.

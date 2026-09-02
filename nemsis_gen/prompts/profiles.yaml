@@ -41,14 +41,14 @@ profiles:
       Schema-valid, clinically coherent, narrative affirmatively supports medical
       necessity for the level of transport billed.
     narrative_quality: 5
-    temperature: 0.7
+    effort: high
 
   valid_weak_narrative:
     description: >
       Schema-valid and clinically coherent, ALS/BLS care documented and billed,
       but the narrative fails CMS medical-necessity documentation standards.
     narrative_quality: 1
-    temperature: 0.7
+    effort: high
 
   ambiguous_narrative:
     description: >
@@ -56,26 +56,26 @@ profiles:
       middle of the rubric, for calibrating a scoring model rather than testing
       the extremes.
     narrative_quality: 3
-    temperature: 0.8
+    effort: high
 
   schema_invalid_structural:
     description: >
       Deliberately wrong element order or a required section removed, to exercise
       the validator's structural rejection path.
     narrative_quality: 5
-    temperature: 0.5
+    effort: medium
     mutation: {name: structural, params: {}}
 
   missing_mandatory_fields:
     description: Structurally correct, but required leaf elements are removed.
     narrative_quality: 5
-    temperature: 0.5
+    effort: medium
     mutation: {name: drop_required_leaves, params: {count: 3}}
 
   malformed_xml:
     description: Broken XML syntax, to test parser-level failure.
     narrative_quality: 5
-    temperature: 0.5
+    effort: medium
     mutation: {name: malform, params: {}}
 
   code_value_violations:
@@ -83,5 +83,5 @@ profiles:
       Structurally valid but carrying codes outside the legal NEMSIS value set for
       one or more enumerated fields.
     narrative_quality: 5
-    temperature: 0.5
+    effort: medium
     mutation: {name: illegal_codes, params: {count: 2}}

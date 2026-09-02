@@ -23,7 +23,9 @@ from .valuesets import (
     write_registry,
 )
 
-load_dotenv()
+# .env.local first so a local key overrides a checked-in default.
+for _env_file in (".env.local", ".env"):
+    load_dotenv(_env_file, override=False)
 
 
 @click.group()

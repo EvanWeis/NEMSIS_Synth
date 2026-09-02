@@ -338,7 +338,7 @@ def generate_record(
         profile_block + "\n" + STAGE_A_INSTRUCTIONS,
         scenario.to_prompt_block()
         + "\n\nReturn the clinical JSON between <json> and </json> markers.",
-        temperature=profile.temperature,
+        effort=profile.effort,
     )
     clinical = json.loads(extract_json_block(stage_a_raw))
 
@@ -355,7 +355,7 @@ def generate_record(
         profile_block + "\n" + STAGE_B_INSTRUCTIONS,
         json.dumps(coded_request, indent=1)
         + "\n\nReturn the code selections between <json> and </json> markers.",
-        temperature=0.0,  # selection is a lookup, not a creative act
+        effort="low",  # selection is a lookup, not a creative act
     )
     codes = json.loads(extract_json_block(stage_b_raw))
 
