@@ -326,7 +326,14 @@ def generate_record(
     registry: Registry,
     template: Path = DEFAULT_TEMPLATE,
     model: SchemaModel | None = None,
+    coder: ApiClient | None = None,
 ) -> GenerationResult:
+    """``coder`` optionally runs stage B on a different (cheaper) model.
+
+    The stages ask for different things - stage A is clinical writing, stage B is
+    matching a phrase to a row in a catalogue that is already in the prompt - so
+    they do not necessarily need the same model.
+    """
     model = model or load_model()
     plan = load_fieldplan()
 
@@ -350,7 +357,7 @@ def generate_record(
             "groups": {name: spec.get("coded", {}) for name, spec in plan.groups.items()},
         },
     }
-    stage_b_raw = client.complete(
+    stage_b_raw = (coder or client).complete(
         cached_system,
         profile_block + "\n" + STAGE_B_INSTRUCTIONS,
         json.dumps(coded_request, indent=1)

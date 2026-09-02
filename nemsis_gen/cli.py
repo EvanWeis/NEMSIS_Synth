@@ -134,6 +134,11 @@ def profiles_cmd() -> None:
 @click.option("--count", default=1, show_default=True)
 @click.option("--out-dir", type=click.Path(path_type=Path), default=Path("out"), show_default=True)
 @click.option("--model", default=DEFAULT_MODEL, show_default=True)
+@click.option(
+    "--coder-model",
+    default=None,
+    help="Run stage B (code selection) on a different model from stage A.",
+)
 @click.option("--template", type=click.Path(exists=True, path_type=Path), default=DEFAULT_TEMPLATE)
 @click.option("--manifest", "manifest_path", type=click.Path(path_type=Path), default=None)
 @click.option("--validate/--no-validate", default=True, show_default=True)
@@ -146,6 +151,7 @@ def generate_cmd(
     count: int,
     out_dir: Path,
     model: str,
+    coder_model: str | None,
     template: Path,
     manifest_path: Path | None,
     validate: bool,
@@ -184,6 +190,7 @@ def generate_cmd(
     manifest = Manifest(manifest_path or Path("manifest") / f"{profile.name}.jsonl")
     try:
         client = ApiClient(model=model)
+        coder = ApiClient(model=coder_model) if coder_model else None
     except RuntimeError as exc:
         raise click.ClickException(str(exc)) from exc
 
@@ -197,6 +204,7 @@ def generate_cmd(
             "narrative_quality": profile.narrative_quality,
             "scenario": scenario.to_json(),
             "model": model,
+            "coder_model": coder_model or model,
             "template": str(template),
         }
 
@@ -240,6 +248,8 @@ def generate_cmd(
 
         row["status"] = "ok"
         row["usage"] = client.usage.to_json()
+        if coder is not None:
+            row["coder_usage"] = coder.usage.to_json()
         manifest.append(row)
 
     click.echo(f"\n{written}/{count} written to {out_dir}")

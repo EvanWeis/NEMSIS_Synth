@@ -15,6 +15,20 @@ MARKER_OPEN = "<json>"
 MARKER_CLOSE = "</json>"
 
 
+# Model capability gates. output_config.effort errors on Haiku 4.5 and the other
+# pre-4.6 models; the server-side refusal fallback beta is Opus 5 / Fable only.
+NO_EFFORT_MODELS = ("claude-haiku-4-5", "claude-sonnet-4-5", "claude-3")
+FALLBACK_MODELS = ("claude-opus-5", "claude-fable-5")
+
+
+def supports_effort(model: str) -> bool:
+    return not model.startswith(NO_EFFORT_MODELS)
+
+
+def supports_fallbacks(model: str) -> bool:
+    return model.startswith(FALLBACK_MODELS)
+
+
 class RefusalError(RuntimeError):
     """The model declined the request. Logged per record, never retried blindly."""
 
@@ -87,9 +101,10 @@ class ApiClient:
             "max_tokens": self.max_tokens,
             "system": system,
             "messages": [{"role": "user", "content": user_message}],
-            "output_config": {"effort": effort},
         }
-        if self.fallbacks:
+        if supports_effort(self.model):
+            common["output_config"] = {"effort": effort}
+        if self.fallbacks and supports_fallbacks(self.model):
             try:
                 return self._client.beta.messages.create(
                     betas=["server-side-fallback-2026-07-01"],

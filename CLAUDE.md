@@ -139,6 +139,15 @@ never emits XML, so element-ordering and namespace errors cannot happen by
 accident — only deliberately, via `mutate.py`. And it never recalls a code from
 memory, which is the failure mode that yields plausible, wrong, hard-to-spot data.
 
+- **Model choice (measured, not assumed).** `claude-sonnet-5` is the floor for
+  production use: it holds the rubric gradation apart and keeps value sets straight,
+  at roughly half the cost of Opus. `claude-haiku-4-5` cross-contaminated value sets
+  (put an `eSituation.13` Initial Acuity code into `eDisposition.19` Final Acuity) and
+  flattened initial/final acuity to the same value — the post-hoc registry check
+  caught it, but a regeneration loop is then part of the cost. Splitting the stages
+  across models (`--coder-model`) is a **false economy**: prompt caches are
+  model-scoped, so the ~10k-token catalogue gets created twice and Opus+Haiku measured
+  *more* expensive than Opus alone ($0.52 vs $0.38 per 2 records).
 - **No `temperature`.** The sampling parameters were removed on Opus 5 and return a
   400. Depth is `output_config: {effort: ...}` instead — profiles set `effort: high`
   for clinical content, and stage B always runs at `effort: low` because selection is
