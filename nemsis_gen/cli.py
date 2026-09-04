@@ -161,8 +161,14 @@ def profiles_cmd() -> None:
 @click.option(
     "--scenario-file",
     type=click.Path(exists=True, path_type=Path),
+    multiple=True,
+    help="Scenario YAML. Repeat the flag to run several; --count applies to each.",
+)
+@click.option(
+    "--scenario-dir",
+    type=click.Path(exists=True, file_okay=False, path_type=Path),
     default=None,
-    help="Structured scenario YAML (patient, scene, assessment, interventions, narrative).",
+    help="Run every *.yaml scenario in this directory.",
 )
 @click.option("--count", default=1, show_default=True)
 @click.option(
@@ -201,7 +207,8 @@ def profiles_cmd() -> None:
 def generate_cmd(
     profile_name: str,
     scenario_text: str | None,
-    scenario_file: Path | None,
+    scenario_file: tuple[Path, ...],
+    scenario_dir: Path | None,
     count: int,
     concurrency: int,
     out_dir: Path,
@@ -215,9 +222,12 @@ def generate_cmd(
     shots: int,
     dry_run: bool,
 ) -> None:
-    """Generate N synthetic PCRs for one quality profile."""
-    if not scenario_text and not scenario_file:
-        raise click.UsageError("give --scenario or --scenario-file")
+    """Generate --count records of one profile, for each scenario given."""
+    paths = list(scenario_file)
+    if scenario_dir is not None:
+        paths.extend(sorted(scenario_dir.glob("*.yaml")))
+    if not scenario_text and not paths:
+        raise click.UsageError("give --scenario, --scenario-file, or --scenario-dir")
 
     config = load_profiles()
     try:
@@ -225,18 +235,22 @@ def generate_cmd(
     except KeyError as exc:
         raise click.ClickException(str(exc)) from exc
 
-    scenario = (
-        Scenario.from_file(scenario_file) if scenario_file else Scenario.from_text(scenario_text)
+    scenarios = (
+        [Scenario.from_file(path) for path in paths]
+        if paths
+        else [Scenario.from_text(scenario_text)]
     )
     registry = load_registry()
+    total = count * len(scenarios)
 
     if dry_run:
         cached = build_cached_system(registry)
         cached_tokens = len(cached) // 4
         click.echo(f"profile:        {profile.name} (narrative {profile.narrative_quality}/5)")
-        click.echo(f"scenario:       {scenario.name}")
+        click.echo(f"scenarios:      {', '.join(s.name for s in scenarios)}")
+        click.echo(f"records:        {total} ({count} x {len(scenarios)} scenario(s))")
         click.echo(f"cached system:  ~{cached_tokens:,} tokens, sent once then cached")
-        click.echo(f"calls:          {count * 2} ({count} records x 2 stages)")
+        click.echo(f"calls:          {total * 2} ({total} records x 2 stages)")
         click.echo(
             "Cache reads are billed at a fraction of input rate, so the catalogue is "
             "paid for roughly once per run rather than once per call."
@@ -251,10 +265,14 @@ def generate_cmd(
     except RuntimeError as exc:
         raise click.ClickException(str(exc)) from exc
 
-    def produce(index: int) -> tuple[dict, bool]:
+    def produce(scenario: Scenario, index: int) -> tuple[dict, bool]:
         """Generate, mutate and validate one record. Never raises - a failed
-        record is a manifest row, not a crashed run."""
-        name = f"{profile.name}_{index + 1:03d}.xml"
+        record is a manifest row, not a crashed run.
+
+        The scenario name is part of the filename: without it, running several
+        scenarios into one directory would silently overwrite.
+        """
+        name = f"{profile.name}_{scenario.name}_{index + 1:03d}.xml"
         path = out_dir / name
         row: dict = {
             "file": str(path),
@@ -270,9 +288,9 @@ def generate_cmd(
             "mode": mode,
         }
 
-        def note(message: str, _index: int = index) -> None:
-            # Threads interleave; the record number keeps lines attributable.
-            click.echo(f"  [{_index + 1:03d}] {message}", err=True)
+        def note(message: str, _label: str = f"{scenario.name} {index + 1:03d}") -> None:
+            # Threads interleave; the label keeps lines attributable.
+            click.echo(f"  [{_label}] {message}", err=True)
 
         note("starting")
         try:
@@ -347,30 +365,33 @@ def generate_cmd(
             flag = "" if matched else "  !! did not match profile expectation"
             click.echo(f"{status}  {name:34} {detail}{flag}")
 
-    click.echo(f"generating {count} record(s)  profile={profile.name}  scenario={scenario.name}")
+    click.echo(f"generating {total} record(s)  profile={profile.name}")
+    click.echo(f"scenarios: {', '.join(s.name for s in scenarios)}")
     click.echo(
-        f"model={model}  concurrency={concurrency}  {count * 2} API calls, 2 stages per record"
+        f"model={model}  concurrency={concurrency}  {total * 2} API calls, 2 stages per record"
     )
     click.echo("")
+
+    tasks = [(scenario, index) for scenario in scenarios for index in range(count)]
 
     written = 0
     if concurrency > 1:
         # Each record is two sequential calls; parallelism is across records.
         with ThreadPoolExecutor(max_workers=concurrency) as pool:
-            futures = {pool.submit(produce, i): i for i in range(count)}
+            futures = [pool.submit(produce, scenario, index) for scenario, index in tasks]
             for future in as_completed(futures):
                 row, produced = future.result()
                 written += produced
                 manifest.append(row)
                 report(row)
     else:
-        for index in range(count):
-            row, produced = produce(index)
+        for scenario, index in tasks:
+            row, produced = produce(scenario, index)
             written += produced
             manifest.append(row)
             report(row)
 
-    click.echo(f"\n{written}/{count} written to {out_dir}")
+    click.echo(f"\n{written}/{total} written to {out_dir}")
     click.echo(f"manifest: {manifest.path}")
     click.echo(f"tokens: {json.dumps(client.usage.to_json())}")
 
