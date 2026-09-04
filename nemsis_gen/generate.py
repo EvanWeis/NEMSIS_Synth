@@ -12,6 +12,7 @@ recall is the failure mode that produces plausible, wrong, hard-to-spot data.
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from dataclasses import dataclass
 from dataclasses import field as dc_field
 from datetime import UTC, datetime
@@ -425,6 +426,7 @@ def generate_record(
     template: Path = DEFAULT_TEMPLATE,
     model: SchemaModel | None = None,
     coder: ApiClient | None = None,
+    on_progress: Callable[[str], None] | None = None,
 ) -> GenerationResult:
     """``coder`` optionally runs stage B on a different (cheaper) model.
 
@@ -437,7 +439,9 @@ def generate_record(
 
     cached_system = build_cached_system(registry, plan)
     profile_block = narrative_instruction_text(profile, config)
+    note = on_progress or (lambda _message: None)
 
+    note("stage A - clinical account")
     stage_a_raw = client.complete(
         cached_system,
         profile_block + "\n" + STAGE_A_INSTRUCTIONS,
@@ -446,6 +450,7 @@ def generate_record(
         effort=profile.effort,
     )
     clinical = json.loads(extract_json_block(stage_a_raw))
+    note("stage B - code selection")
 
     coded_request = {
         "clinical_account": clinical,
@@ -463,6 +468,7 @@ def generate_record(
         effort="low",  # selection is a lookup, not a creative act
     )
     codes = json.loads(extract_json_block(stage_b_raw))
+    note("rendering and validating")
 
     sections, demographic, _uuid = value_tree_from_document(template.read_bytes(), model=model)
     unknown, off_list = apply_selections(sections, clinical, codes, plan, model, registry)

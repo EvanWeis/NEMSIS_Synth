@@ -270,6 +270,11 @@ def generate_cmd(
             "mode": mode,
         }
 
+        def note(message: str, _index: int = index) -> None:
+            # Threads interleave; the record number keeps lines attributable.
+            click.echo(f"  [{_index + 1:03d}] {message}", err=True)
+
+        note("starting")
         try:
             if mode == "direct":
                 data = generate_direct(
@@ -284,7 +289,14 @@ def generate_cmd(
                 row["shots"] = shots
             else:
                 result = generate_record(
-                    client, scenario, profile, config, registry, template=template, coder=coder
+                    client,
+                    scenario,
+                    profile,
+                    config,
+                    registry,
+                    template=template,
+                    coder=coder,
+                    on_progress=note,
                 )
                 data = result.xml
                 row["unknown_codes"] = result.unknown_codes
@@ -334,6 +346,12 @@ def generate_cmd(
             detail = "ingests" if row["validation"]["ok"] else "rejected at ingest"
             flag = "" if matched else "  !! did not match profile expectation"
             click.echo(f"{status}  {name:34} {detail}{flag}")
+
+    click.echo(f"generating {count} record(s)  profile={profile.name}  scenario={scenario.name}")
+    click.echo(
+        f"model={model}  concurrency={concurrency}  {count * 2} API calls, 2 stages per record"
+    )
+    click.echo("")
 
     written = 0
     if concurrency > 1:
